@@ -1,11 +1,11 @@
 Package: StreamCatR
 Type: Package
-Title: What the Package Does (Title Case)
+Title: Fast calculation of catchment zonal statistics and StreamCat-like watershed metrics
 Version: 0.1.0
 Authors@R: c(
     person(
-      "Jane", "Doe",
-      email = "jane@example.com",
+      "Ryan", "Hill",
+      email = "hill.ryan@epa.gov",
       role = c("aut", "cre")
     )
   )
@@ -21,8 +21,12 @@ Suggests:
 Config/testthat/edition: 3
 LinkingTo: 
     Rcpp
-Imports: 
+Imports:
     arrow,
     data.table,
+    terra,
     Rcpp,
-    terra
+    future,
+    future.apply,
+    ps
+ 

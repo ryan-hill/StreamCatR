@@ -15,6 +15,31 @@ sr_optimize_zones(
   progress_every = 0L
 )
 }
+\arguments{
+\item{catchment_path}{Path to a catchment raster (GRIDCODE values).}
+
+\item{region_id}{Character region identifier used in output filenames.}
+
+\item{blocksize}{Integer block size (pixels) for tiling and windows.}
+
+\item{outdir}{Output directory for cached artifacts.}
+
+\item{target_crs}{Target CRS (default "EPSG:5070").}
+
+\item{overwrite_rasters}{If TRUE, overwrite existing cached outputs.}
+
+\item{build_windows}{If TRUE, write non-empty windows parquet.}
+
+\item{progress_every}{Progress frequency for streaming scan (0 disables).}
+}
+\value{
+An \code{sr_zones} object with paths to cached artifacts.
+}
 \description{
-Optimize catchments for fast zonal summaries
+Creates three cached artifacts used by fast zonal operations:
+\enumerate{
+\item GRIDCODE -> idx mapping parquet
+\item Zidx raster (idx 1..K)
+\item non-empty windows parquet (optional)
+}
 }

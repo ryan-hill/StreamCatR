@@ -1,5 +1,25 @@
-
-#' Optimize predictor raster for fast zonal statistics
+#' Optimize a predictor raster for fast zonal processing
+#'
+#' Reads a predictor raster, optionally projects/resamples it to a target CRS and
+#' resolution, optionally trims NA-only edges, and writes a tiled/compressed GeoTIFF
+#' suitable for fast windowed IO during zonal summaries.
+#'
+#' @param infile Path to an input raster readable by `terra`.
+#' @param outdir Output directory for the optimized raster.
+#' @param outname Base filename (without directory) for the optimized raster.
+#' @param blocksize Integer tile size in pixels (used for GeoTIFF BLOCKXSIZE/BLOCKYSIZE).
+#' @param target_crs Target CRS for output (e.g., `"EPSG:5070"`). If NULL, keep original.
+#' @param resample Resampling method used when projecting/resampling (e.g., `"near"`, `"bilinear"`).
+#' @param trim_edges Logical; if TRUE, trim NA-only edges using `terra::trim()` when possible.
+#' @param datatype GDAL datatype string for output (e.g., `"FLT4S"`, `"INT2S"`).
+#' @param overwrite Logical; if TRUE, overwrite existing output and common sidecar files.
+#' @param gdal_compress Compression method (e.g., `"ZSTD"`, `"LZW"`).
+#' @param zstd_level Integer ZSTD compression level (only used when `gdal_compress="ZSTD"`).
+#' @param bigtiff Logical; if TRUE, write BIGTIFF=YES.
+#' @param threads Character/Integer passed to GDAL `NUM_THREADS` (e.g., `"ALL_CPUS"`).
+#' @param gdal_extra Character vector of additional GDAL creation options.
+#'
+#' @return Invisibly returns the output file path.
 #' @export
 sr_optimize_predictor <- function(
     infile,

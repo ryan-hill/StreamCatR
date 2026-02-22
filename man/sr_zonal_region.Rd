@@ -2,7 +2,7 @@
 % Please edit documentation in R/zonal_region.R
 \name{sr_zonal_region}
 \alias{sr_zonal_region}
-\title{Run single region}
+\title{Run zonal statistics for a single region}
 \usage{
 sr_zonal_region(
   region_id,
@@ -15,6 +15,27 @@ sr_zonal_region(
   project_predictor_if_needed = FALSE
 )
 }
+\arguments{
+\item{region_id}{Character region identifier used in filenames.}
+
+\item{zone_dir}{Directory containing zone artifacts produced by \code{\link[=sr_optimize_zones]{sr_optimize_zones()}}.}
+
+\item{predictor_path}{Path to predictor raster.}
+
+\item{blocksize}{Integer block size used when building zone artifacts.}
+
+\item{method}{Resampling method (default "near"). Used only if projecting predictor.}
+
+\item{stats}{Character vector of statistics. Supported: \code{"sum"}, \code{"mean"}, \code{"n"}.}
+
+\item{progress_every}{Print progress every N windows (0 disables).}
+
+\item{project_predictor_if_needed}{Logical; if TRUE, project predictor to match Zidx CRS.}
+}
+\value{
+A \code{data.table} with one row per GRIDCODE.
+}
 \description{
-Run single region
+Loads cached zone artifacts from \code{zone_dir} for \code{region_id} and \code{blocksize},
+aligns the predictor (optionally projecting), and runs fast zonal summaries.
 }

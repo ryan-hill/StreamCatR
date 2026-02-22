@@ -2,7 +2,7 @@
 % Please edit documentation in R/optimize_predictor.R
 \name{sr_optimize_predictor}
 \alias{sr_optimize_predictor}
-\title{Optimize predictor raster for fast zonal statistics}
+\title{Optimize a predictor raster for fast zonal processing}
 \usage{
 sr_optimize_predictor(
   infile,
@@ -21,6 +21,40 @@ sr_optimize_predictor(
   gdal_extra = NULL
 )
 }
+\arguments{
+\item{infile}{Path to an input raster readable by \code{terra}.}
+
+\item{outdir}{Output directory for the optimized raster.}
+
+\item{outname}{Base filename (without directory) for the optimized raster.}
+
+\item{blocksize}{Integer tile size in pixels (used for GeoTIFF BLOCKXSIZE/BLOCKYSIZE).}
+
+\item{target_crs}{Target CRS for output (e.g., \code{"EPSG:5070"}). If NULL, keep original.}
+
+\item{resample}{Resampling method used when projecting/resampling (e.g., \code{"near"}, \code{"bilinear"}).}
+
+\item{trim_edges}{Logical; if TRUE, trim NA-only edges using \code{terra::trim()} when possible.}
+
+\item{datatype}{GDAL datatype string for output (e.g., \code{"FLT4S"}, \code{"INT2S"}).}
+
+\item{overwrite}{Logical; if TRUE, overwrite existing output and common sidecar files.}
+
+\item{gdal_compress}{Compression method (e.g., \code{"ZSTD"}, \code{"LZW"}).}
+
+\item{zstd_level}{Integer ZSTD compression level (only used when \code{gdal_compress="ZSTD"}).}
+
+\item{bigtiff}{Logical; if TRUE, write BIGTIFF=YES.}
+
+\item{threads}{Character/Integer passed to GDAL \code{NUM_THREADS} (e.g., \code{"ALL_CPUS"}).}
+
+\item{gdal_extra}{Character vector of additional GDAL creation options.}
+}
+\value{
+Invisibly returns the output file path.
+}
 \description{
-Optimize predictor raster for fast zonal statistics
+Reads a predictor raster, optionally projects/resamples it to a target CRS and
+resolution, optionally trims NA-only edges, and writes a tiled/compressed GeoTIFF
+suitable for fast windowed IO during zonal summaries.
 }

@@ -2,7 +2,7 @@
 % Please edit documentation in R/zonal_all.R
 \name{sr_zonal_all}
 \alias{sr_zonal_all}
-\title{Run all regions if multiple}
+\title{Run zonal statistics for all regions}
 \usage{
 sr_zonal_all(
   regions,
@@ -18,13 +18,48 @@ sr_zonal_all(
   memfrac_total = 0.8,
   approx_mem_per_worker_gb = NULL,
   out_terra_temp_base = file.path(tempdir(), "terra_parallel"),
-  zonal_file = file.path("StreamCatR", "zonal_stats_r",
-    "04.zonal_functions_true_blocking.R"),
   r_libs_user = NULL,
   combine = TRUE,
   verbose = TRUE
 )
 }
+\arguments{
+\item{regions}{Character vector of region identifiers.}
+
+\item{zone_dir}{Directory containing zone artifacts produced by \code{\link[=sr_optimize_zones]{sr_optimize_zones()}}.}
+
+\item{predictor_path}{Path to the predictor raster.}
+
+\item{blocksize}{Integer block size used when building the zone artifacts.}
+
+\item{method}{Resampling method (default \code{"near"}). Used only if projecting predictor.}
+
+\item{stats}{Character vector of statistics. Supported: \code{"sum"}, \code{"mean"}, \code{"n"}.}
+
+\item{plan_strategy}{Future strategy name (e.g., \code{"sequential"}, \code{"multisession"}).}
+
+\item{reserve_cores}{Integer number of CPU cores to leave unused.}
+
+\item{prefer_threads_per_worker}{Logical; if TRUE, prefer fewer workers with more threads each.}
+
+\item{max_workers}{Maximum number of parallel workers to use.}
+
+\item{memfrac_total}{Fraction of total RAM to budget for workers (0-1).}
+
+\item{approx_mem_per_worker_gb}{Approximate memory (GB) needed per worker (used for worker count heuristics).}
+
+\item{out_terra_temp_base}{Optional directory for terra temp files (useful on HPC / scratch).}
+
+\item{r_libs_user}{Optional library path to set \code{R_LIBS_USER} for workers.}
+
+\item{combine}{Logical; if TRUE, row-bind all regional results into one table.}
+
+\item{verbose}{Logical; if TRUE, print progress and configuration details.}
+}
+\value{
+If \code{combine=TRUE}, a single \code{data.table}. Otherwise a named list of \code{data.table}s by region.
+}
 \description{
-Run all regions if multiple
+Applies \code{\link[=sr_zonal_region]{sr_zonal_region()}} across multiple regions and (optionally) combines results.
+Designed for large rasters and many regions; can parallelize across regions.
 }

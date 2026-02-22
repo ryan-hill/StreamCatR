@@ -1,64 +1,28 @@
-# 06.run_regions_parallel.R
-# Definitions only. No side effects when sourcing.
-
-.sr_auto_parallel_layout <- function(n_tasks,
-                                 reserve_cores = 2L,
-                                 prefer_threads_per_worker = 2L,
-                                 max_workers = NULL,
-                                 memfrac_total = 0.8,
-                                 approx_mem_per_worker_gb = NULL) {
-  total_cores  <- parallel::detectCores(logical = TRUE)
-  usable_cores <- max(1L, total_cores - as.integer(reserve_cores))
-
-  threads_per_worker <- max(1L, as.integer(prefer_threads_per_worker))
-  workers_by_cpu <- floor(usable_cores / threads_per_worker)
-  if (!is.null(max_workers)) workers_by_cpu <- min(workers_by_cpu, as.integer(max_workers))
-  workers_by_cpu <- max(1L, workers_by_cpu)
-
-  # Optional RAM cap (guarded; works even if ps doesn't export virtual_memory)
-  workers_by_ram <- Inf
-  available_gb <- NA_real_
-
-  if (requireNamespace("ps", quietly = TRUE)) {
-    ex <- getNamespaceExports("ps")
-    mem_fun <- NULL
-    if ("ps_system_memory" %in% ex) {
-      mem_fun <- ps::ps_system_memory
-    } else if ("virtual_memory" %in% ex) {
-      mem_fun <- getExportedValue("ps", "virtual_memory")
-    }
-    if (!is.null(mem_fun)) {
-      vm <- tryCatch(mem_fun(), error = function(e) NULL)
-      if (is.list(vm)) {
-        bytes <- vm$available
-        if (is.null(bytes)) bytes <- vm$free
-        if (is.numeric(bytes) && is.finite(bytes)) {
-          available_gb <- as.numeric(bytes) / 1024^3
-        }
-      }
-    }
-  }
-
-  if (!is.null(approx_mem_per_worker_gb) && is.finite(available_gb)) {
-    max_workers_from_ram <- floor((available_gb * memfrac_total) / approx_mem_per_worker_gb)
-    workers_by_ram <- max(1L, max_workers_from_ram)
-  }
-
-  workers <- min(n_tasks, workers_by_cpu, workers_by_ram)
-  workers <- max(1L, as.integer(workers))
-
-  terra_memfrac <- max(0.05, min(0.9, memfrac_total / workers))
-  list(
-    workers = workers,
-    threads_per_worker = as.integer(threads_per_worker),
-    gdal_threads  = as.integer(threads_per_worker),
-    omp_threads   = as.integer(threads_per_worker),
-    terra_threads = as.integer(threads_per_worker),
-    terra_memfrac = terra_memfrac
-  )
-}
-
-#' Run all regions if multiple
+#' Run zonal statistics for all regions
+#'
+#' Applies [sr_zonal_region()] across multiple regions and (optionally) combines results.
+#' Designed for large rasters and many regions; can parallelize across regions.
+#'
+#' @param regions Character vector of region identifiers.
+#' @param zone_dir Directory containing zone artifacts produced by [sr_optimize_zones()].
+#' @param predictor_path Path to the predictor raster.
+#' @param blocksize Integer block size used when building the zone artifacts.
+#' @param method Resampling method (default `"near"`). Used only if projecting predictor.
+#' @param stats Character vector of statistics. Supported: `"sum"`, `"mean"`, `"n"`.
+#'
+#' @param plan_strategy Future strategy name (e.g., `"sequential"`, `"multisession"`).
+#' @param reserve_cores Integer number of CPU cores to leave unused.
+#' @param prefer_threads_per_worker Logical; if TRUE, prefer fewer workers with more threads each.
+#' @param max_workers Maximum number of parallel workers to use.
+#' @param memfrac_total Fraction of total RAM to budget for workers (0-1).
+#' @param approx_mem_per_worker_gb Approximate memory (GB) needed per worker (used for worker count heuristics).
+#'
+#' @param out_terra_temp_base Optional directory for terra temp files (useful on HPC / scratch).
+#' @param r_libs_user Optional library path to set `R_LIBS_USER` for workers.
+#' @param combine Logical; if TRUE, row-bind all regional results into one table.
+#' @param verbose Logical; if TRUE, print progress and configuration details.
+#'
+#' @return If `combine=TRUE`, a single `data.table`. Otherwise a named list of `data.table`s by region.
 #' @export
 sr_zonal_all <- function(regions,
                                  zone_dir,
@@ -73,7 +37,7 @@ sr_zonal_all <- function(regions,
                                  memfrac_total = 0.8,
                                  approx_mem_per_worker_gb = NULL,
                                  out_terra_temp_base = file.path(tempdir(), "terra_parallel"),
-                                 zonal_file = file.path("StreamCatR","zonal_stats_r","04.zonal_functions_true_blocking.R"),
+                                 #zonal_file = file.path("StreamCatR","zonal_stats_r","04.zonal_functions_true_blocking.R"),
                                  r_libs_user = NULL,  # optional: e.g., "C:/Users/ME/AppData/Local/R/libraries"
                                  combine = TRUE,
                                  verbose = TRUE) {
@@ -87,10 +51,10 @@ sr_zonal_all <- function(regions,
   }
 
   # Resolve zonal file path now to fail fast
-  zf <- tryCatch(normalizePath(zonal_file, mustWork = TRUE),
-                 error = function(e) stop("zonal_file not found: ", zonal_file))
+  # zf <- tryCatch(normalizePath(zonal_file, mustWork = TRUE),
+  #                error = function(e) stop("zonal_file not found: ", zonal_file))
 
-  layout <- auto_parallel_layout(
+  layout <- .sr_auto_parallel_layout(
     n_tasks = length(regions),
     reserve_cores = reserve_cores,
     prefer_threads_per_worker = prefer_threads_per_worker,
@@ -152,7 +116,6 @@ sr_zonal_all <- function(regions,
   #       }
   #     })
   #     # Optional: attach scaccum if present (init in 04 will also handle it)
-  #     if (requireNamespace("scaccum", quietly = TRUE)) {
   #       # library(scaccum) # not strictly necessary if 04 binds the symbol
   #     }
   #
@@ -161,7 +124,7 @@ sr_zonal_all <- function(regions,
   #
   #     if (isTRUE(verbose)) message(sprintf("[Worker %d] %s", Sys.getpid(), rid))
   #
-  #     out <- run_region_accumulation(
+  #     out <- sr_zonal_region(
   #       region_id       = rid,
   #       zone_dir        = zone_dir,
   #       predictor_path  = predictor_path,
@@ -189,22 +152,19 @@ sr_zonal_all <- function(regions,
 
       wd <- file.path(out_terra_temp_base, paste0("worker_", Sys.getpid()))
       dir.create(wd, recursive = TRUE, showWarnings = FALSE)
-      terra::terraOptions(threads = layout$terra_threads,
-                          memfrac = layout$terra_memfrac,
-                          tempdir = wd)
+      terra::terraOptions(
+        threads = layout$terra_threads,
+        memfrac = layout$terra_memfrac,
+        tempdir = wd
+      )
 
-      suppressPackageStartupMessages({
-        library(terra); library(arrow); library(data.table)
-        # Prefer to load scaccum; init_accumulator() will then find the fast path
-        if (requireNamespace("scaccum", quietly = TRUE)) {
-          # library(scaccum) # optional
-        }
-      })
+      # Optional: scaccum
+      # if (requireNamespace("scaccum", quietly = TRUE)) {
+      #   # optional attach:
+      #   # suppressPackageStartupMessages(library(scaccum))
+      # }
 
-      # Source zonal functions; this calls init_accumulator() internally
-      sys.source(zonal_file, envir = environment())
-
-      out <- run_region_accumulation(
+      out <- sr_zonal_region(
         region_id       = rid,
         zone_dir        = zone_dir,
         predictor_path  = predictor_path,
@@ -215,7 +175,7 @@ sr_zonal_all <- function(regions,
       )
       list(region = rid, result = out)
     },
-    future.packages = c("terra", "arrow", "data.table", "scaccum")
+    future.packages = c("StreamCatR", "terra", "arrow", "data.table")
   )
 
   names(res_list) <- vapply(res_list, `[[`, "", "region")

@@ -2,10 +2,10 @@
 # Generator token: 10BE3573-1514-4C36-9D1C-5A225CD40393
 
 acc_sum_n_idx1K <- function(idx, v, sumv, n) {
-    invisible(.Call('_StreamCatR_acc_sum_n_idx1K', PACKAGE = 'StreamCatR', idx, v, sumv, n))
+    invisible(.Call(`_StreamCatR_acc_sum_n_idx1K`, idx, v, sumv, n))
 }
 
 acc_sum_n_map_centers1K <- function(idx, xminZ, ymaxZ, rxZ, ryZ, nx, ny, valsP, xminP, ymaxP, rxP, ryP, ncP, nrP, sumv, n) {
-    invisible(.Call('_StreamCatR_acc_sum_n_map_centers1K', PACKAGE = 'StreamCatR', idx, xminZ, ymaxZ, rxZ, ryZ, nx, ny, valsP, xminP, ymaxP, rxP, ryP, ncP, nrP, sumv, n))
+    invisible(.Call(`_StreamCatR_acc_sum_n_map_centers1K`, idx, xminZ, ymaxZ, rxZ, ryZ, nx, ny, valsP, xminP, ymaxP, rxP, ryP, ncP, nrP, sumv, n))
 }
 
