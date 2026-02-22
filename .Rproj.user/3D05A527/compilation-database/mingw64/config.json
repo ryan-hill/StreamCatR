@@ -1,0 +1,24 @@
+{
+    "args": [
+        "-std=gnu++17",
+        "-IC:/PROGRA~1/R/R-45~1.2/include",
+        "-DNDEBUG",
+        "-IC:/Users/ryanh/AppData/Local/R/r_libraries/Rcpp/include",
+        "-DEIGEN_DONT_VECTORIZE",
+        "-nostdinc",
+        "-IC:/rtools45/x86_64-w64-mingw32.static.posix/bin/../lib/gcc/x86_64-w64-mingw32.static.posix/14.3.0/include/c++",
+        "-IC:/rtools45/x86_64-w64-mingw32.static.posix/bin/../lib/gcc/x86_64-w64-mingw32.static.posix/14.3.0/include/c++/x86_64-w64-mingw32.static.posix",
+        "-IC:/rtools45/x86_64-w64-mingw32.static.posix/bin/../lib/gcc/x86_64-w64-mingw32.static.posix/14.3.0/include/c++/backward",
+        "-IC:/rtools45/x86_64-w64-mingw32.static.posix/bin/../lib/gcc/x86_64-w64-mingw32.static.posix/14.3.0/include",
+        "-IC:/rtools45/x86_64-w64-mingw32.static.posix/bin/../lib/gcc/x86_64-w64-mingw32.static.posix/14.3.0/../../../../include",
+        "-IC:/rtools45/x86_64-w64-mingw32.static.posix/bin/../lib/gcc/x86_64-w64-mingw32.static.posix/14.3.0/include-fixed",
+        "-include",
+        "C:/WorkFolder/Projects/StreamCatR/.Rproj.user/3D05A527/compilation-database/mingw64/cpp-definitions.h"
+    ],
+    "pch": "Rcpp",
+    "is_cpp": true,
+    "hash": "1771727892",
+    "compiler": "588193333979124157",
+    "rversion": "4.5.2",
+    "dbversion": 4
+}
