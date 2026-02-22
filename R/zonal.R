@@ -186,13 +186,14 @@ sr_zonal <- function(
 
   out <- data.table::data.table(GRIDCODE = ids)
 
-  if ("sum" %in% stats) out[, sum := sumv]
-  if ("n" %in% stats)   out[, n := n]
+  if ("sum" %in% stats) out[["sum"]] <- sumv
+  if ("n" %in% stats)   out[["n"]]   <- n
+
   if ("mean" %in% stats) {
     m <- rep(NA_real_, length(sumv))
     okn <- n > 0L
     m[okn] <- sumv[okn] / n[okn]
-    out[, mean := m]
+    out[["mean"]] <- m
   }
 
   out

@@ -19,7 +19,7 @@ sr_zonal_region <- function(
     predictor_path,
     blocksize,
     method = "near",
-    stats  = "sum",
+    stats = c("sum", "n"),
     progress_every = 0L,
     project_predictor_if_needed = FALSE
 ) {
