@@ -7,7 +7,7 @@ vignette: >
   %\VignetteEncoding{UTF-8}
 ---
 
-```{r setup, message=FALSE}
+```{r setup, message=FALSE, eval=FALSE}
 library(StreamCatR)
 library(data.table)
 
@@ -15,7 +15,7 @@ library(data.table)
 info <- sr_fetch_accum_data("mr_nhdplus_conus")
 
 # Build staged upstream pairs
-fw <- sr_build_accum_framework(
+fw <- sr_streamcat_framework(
   out_dir = file.path(tempdir(), "pairs_mr_conus"),
   preset = "mr_nhdplus",
   overwrite = TRUE
@@ -30,7 +30,7 @@ ws <- sr_accumulate_ws(
   framework = fw
 )
 
-fw2 <- sr_build_accum_framework(
+fw2 <- sr_streamcat_framework(
   out_dir = file.path(tempdir(), "pairs_custom"),
   preset = "none",
   from_to = "my_from_to.parquet",

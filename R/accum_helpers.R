@@ -1,3 +1,7 @@
+#' @importFrom rlang .data
+#' @importFrom stats setNames
+NULL
+
 #' @keywords internal
 #' @noRd
 .sr_accum_cache_dir <- function(dataset) {
@@ -214,8 +218,8 @@
 
   ws <- ds_pairs |>
     dplyr::transmute(
-      COMID    = arrow::cast(.data$COMID,    arrow::int32()),
-      UPCOMIDS = arrow::cast(.data$UPCOMIDS, arrow::int32())
+      COMID    = as.integer(.data$COMID),
+      UPCOMIDS = as.integer(.data$UPCOMIDS)
     ) |>
     dplyr::left_join(
       arrow::Table$create(cat_tbl),

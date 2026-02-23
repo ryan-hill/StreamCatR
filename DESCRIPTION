@@ -17,7 +17,10 @@ LazyData: true
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
 Suggests: 
-    testthat (>= 3.0.0)
+    testthat (>= 3.0.0),
+    rappdirs,
+    knitr,
+    rmarkdown
 Config/testthat/edition: 3
 LinkingTo: 
     Rcpp
@@ -28,5 +31,8 @@ Imports:
     Rcpp,
     future,
     future.apply,
-    ps
- 
+    ps,
+    dplyr,
+    igraph,
+    rlang
+VignetteBuilder: knitr
