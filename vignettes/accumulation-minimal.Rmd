@@ -1,0 +1,52 @@
+---
+title: "Watershed accumulation (minimal)"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Watershed accumulation (minimal)}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, message=FALSE}
+library(StreamCatR)
+library(data.table)
+
+# Fetch on-demand data (only needed once)
+info <- sr_fetch_accum_data("mr_nhdplus_conus")
+
+# Build staged upstream pairs
+fw <- sr_build_accum_framework(
+  out_dir = file.path(tempdir(), "pairs_mr_conus"),
+  preset = "mr_nhdplus",
+  overwrite = TRUE
+)
+
+# Assume you already computed zonal stats keyed by GRIDCODE
+# zonal <- sr_zonal_region(...)
+
+# Accumulate upstream across COMID network
+ws <- sr_accumulate_ws(
+  zonal = zonal,
+  framework = fw
+)
+
+fw2 <- sr_build_accum_framework(
+  out_dir = file.path(tempdir(), "pairs_custom"),
+  preset = "none",
+  from_to = "my_from_to.parquet",
+  from_col = "from_id",
+  to_col   = "to_id",
+  edge_filter = function(df) subset(df, stream_type != "canal"),
+  overwrite = TRUE
+)
+
+ws2 <- sr_accumulate_ws(
+  zonal = "my_zonal.parquet",
+  framework = fw2,
+  translation = NULL, # not needed if zonal IDs match network IDs
+  zonal_id_col = "zone_id",
+  net_id_col = "zone_id"
+)
+
+```
+

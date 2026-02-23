@@ -28,5 +28,6 @@ Imports:
     Rcpp,
     future,
     future.apply,
-    ps
+    ps,
+    piggyback
  
