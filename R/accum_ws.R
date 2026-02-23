@@ -1,14 +1,14 @@
 #' Accumulate zonal statistics upstream across a river network
 #'
 #' Given zonal outputs (e.g., from [sr_zonal_region()] or [sr_zonal_all()]) and a staged
-#' upstream-pairs dataset (built by [sr_build_accum_framework()]), compute upstream (watershed)
+#' upstream-pairs dataset (built by [sr_streamcat_framework()]), compute upstream (watershed)
 #' accumulated statistics.
 #'
 #' Supports optional translation from raster GRIDCODE IDs to network IDs (e.g., COMID/FEATUREID).
 #'
 #' @param zonal Zonal results as a data.frame/data.table, Arrow table/dataset, or a file path to parquet.
 #' @param framework Either a `pairs_dir` path or an `"sr_accum_framework"` object returned by
-#'   [sr_build_accum_framework()].
+#'   [sr_streamcat_framework()].
 #' @param translation Optional translation table (data.frame/Arrow table) or parquet path.
 #'   Used to map `zonal_id_col` to `net_id_col` (e.g., GRIDCODE -> FEATUREID/COMID).
 #'   If NULL, assumes zonal IDs already match network IDs.

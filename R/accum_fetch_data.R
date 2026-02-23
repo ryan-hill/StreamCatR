@@ -4,16 +4,19 @@
 #' (e.g., MR NHDPlus CONUS). This avoids bundling large network files inside the
 #' package. By default, data are stored in a user cache directory.
 #'
+#' This version downloads a ZIP directly from a GitHub repository (raw URL),
+#' rather than using GitHub Releases. (You can switch to Releases later.)
+#'
 #' @param dataset Character name of the dataset to fetch. Currently supports
 #'   `"mr_nhdplus_conus"`.
 #' @param dest_dir Destination directory to store the cached dataset. If NULL,
 #'   uses a package cache directory.
 #' @param force Logical; if TRUE, re-download even if files already exist.
 #' @param quiet Logical; if TRUE, suppress messages.
-#' @param repo GitHub repository in `"owner/repo"` form that hosts the Release asset.
-#'   You can keep this the same as the package repo or use a separate data repo.
-#' @param tag GitHub Release tag to download from (e.g., `"accum-data-v1"`).
-#' @param asset Filename of the Release asset (ZIP) to download.
+#' @param repo GitHub repository in `"owner/repo"` form that hosts the ZIP file
+#'   in the repository (e.g., `"ryan-hill/StreamCatR-data"`).
+#' @param branch Git branch or tag name to download from (default `"main"`).
+#' @param asset Filename of the ZIP in the repo (default `"nhdplus_mr_conus_inputs.zip"`).
 #'
 #' @return A named list with `data_dir` and file paths for the dataset.
 #' @export
@@ -22,9 +25,9 @@ sr_fetch_accum_data <- function(
     dest_dir = NULL,
     force = FALSE,
     quiet = FALSE,
-    repo = "YOUR_ORG/StreamCatR",
-    tag = "accum-data-v1",
-    asset = "mr_nhdplus_conus_accum_inputs.zip"
+    repo = "ryan-hill/StreamCatR-data",
+    branch = "main",
+    asset = "nhdplus_mr_conus_inputs.zip"
 ) {
   dataset <- match.arg(dataset)
 
@@ -41,26 +44,29 @@ sr_fetch_accum_data <- function(
     return(expected)
   }
 
-  # Download from GitHub Releases
-  if (!requireNamespace("piggyback", quietly = TRUE)) {
+  # Build a raw GitHub URL for the ZIP
+  # NOTE: this works when the file is committed to the repo at repo root (or provide path in `asset`)
+  zip_url <- sprintf(
+    "https://raw.githubusercontent.com/%s/%s/%s",
+    repo, branch, asset
+  )
+
+  tmp <- tempfile(fileext = ".zip")
+  if (!quiet) message("Downloading ", dataset, " from: ", zip_url)
+
+  # Download
+  ok <- try(
+    utils::download.file(zip_url, destfile = tmp, mode = "wb", quiet = quiet),
+    silent = TRUE
+  )
+  if (inherits(ok, "try-error") || !file.exists(tmp) || file.info(tmp)$size <= 0) {
     stop(
-      "Package 'piggyback' is required to fetch data from GitHub Releases.\n",
-      "Install it with: install.packages('piggyback')",
+      "Download failed.\n",
+      "Tried URL: ", zip_url, "\n",
+      "Check that `repo`, `branch`, and `asset` are correct and that the file is accessible.",
       call. = FALSE
     )
   }
-
-  tmp <- tempfile(fileext = ".zip")
-  if (!quiet) message("Downloading ", dataset, " from GitHub Releases...")
-
-  piggyback::pb_download(
-    file = asset,
-    repo = repo,
-    tag = tag,
-    dest = tmp
-  )
-
-  if (!file.exists(tmp)) stop("Download failed for asset: ", asset, call. = FALSE)
 
   if (!quiet) message("Unzipping to: ", dest_dir)
   utils::unzip(tmp, exdir = dest_dir)

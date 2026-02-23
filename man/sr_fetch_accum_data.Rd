@@ -9,9 +9,9 @@ sr_fetch_accum_data(
   dest_dir = NULL,
   force = FALSE,
   quiet = FALSE,
-  repo = "YOUR_ORG/StreamCatR",
-  tag = "accum-data-v1",
-  asset = "mr_nhdplus_conus_accum_inputs.zip"
+  repo = "ryan-hill/StreamCatR-data",
+  branch = "main",
+  asset = "nhdplus_mr_conus_inputs.zip"
 )
 }
 \arguments{
@@ -25,12 +25,12 @@ uses a package cache directory.}
 
 \item{quiet}{Logical; if TRUE, suppress messages.}
 
-\item{repo}{GitHub repository in \code{"owner/repo"} form that hosts the Release asset.
-You can keep this the same as the package repo or use a separate data repo.}
+\item{repo}{GitHub repository in \code{"owner/repo"} form that hosts the ZIP file
+in the repository (e.g., \code{"ryan-hill/StreamCatR-data"}).}
 
-\item{tag}{GitHub Release tag to download from (e.g., \code{"accum-data-v1"}).}
+\item{branch}{Git branch or tag name to download from (default \code{"main"}).}
 
-\item{asset}{Filename of the Release asset (ZIP) to download.}
+\item{asset}{Filename of the ZIP in the repo (default \code{"nhdplus_mr_conus_inputs.zip"}).}
 }
 \value{
 A named list with \code{data_dir} and file paths for the dataset.
@@ -39,4 +39,8 @@ A named list with \code{data_dir} and file paths for the dataset.
 Downloads and caches optional datasets used for watershed accumulation presets
 (e.g., MR NHDPlus CONUS). This avoids bundling large network files inside the
 package. By default, data are stored in a user cache directory.
+}
+\details{
+This version downloads a ZIP directly from a GitHub repository (raw URL),
+rather than using GitHub Releases. (You can switch to Releases later.)
 }
