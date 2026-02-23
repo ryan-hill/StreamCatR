@@ -7,8 +7,10 @@
 #' @param zone_dir Directory containing zone artifacts produced by [sr_optimize_zones()].
 #' @param predictor_path Path to predictor raster.
 #' @param blocksize Integer block size used when building zone artifacts.
-#' @param method Resampling method (default "near"). Used only if projecting predictor.
-#' @param stats Character vector of statistics. Supported: `"sum"`, `"mean"`, `"n"`.
+#' @param method Resampling method. Currently only `"near"` is supported.
+#'   Zonal alignment uses nearest-cell center matching (no interpolation).
+#'   If projection is required, this method is also used in `terra::project()`.
+#' @param stats Character vector of statistics. Supported: `"sum"`, `"mean"`, `"count"` (alias: `"n"`).
 #' @param progress_every Print progress every N windows (0 disables).
 #' @param project_predictor_if_needed Logical; if TRUE, project predictor to match Zidx CRS.
 #' @return A `data.table` with one row per GRIDCODE.
@@ -19,35 +21,29 @@ sr_zonal_region <- function(
     predictor_path,
     blocksize,
     method = "near",
-    stats = c("sum", "n"),
+    stats = c("sum", "mean", "count"),
     progress_every = 0L,
     project_predictor_if_needed = FALSE
 ) {
   blocksize <- as.integer(blocksize)
 
+  if (!is.character(method) || length(method) != 1L || is.na(method)) {
+    stop("`method` must be a single, non-NA character string.", call. = FALSE)
+  }
+  if (!identical(method, "near")) {
+    stop("Only method = 'near' is currently supported.", call. = FALSE)
+  }
+
   zidx_path <- file.path(zone_dir, sprintf("%s_zone_index_block%d.tif", region_id, blocksize))
   ids_path  <- file.path(zone_dir, sprintf("%s_gridcode_index.parquet", region_id))
   wins_path <- file.path(zone_dir, sprintf("%s_nonempty_windows_%d.parquet", region_id, blocksize))
 
-  if (!file.exists(zidx_path)) stop("Missing Zidx raster: ", zidx_path)
-  if (!file.exists(ids_path))  stop("Missing ID index parquet: ", ids_path)
-  if (!file.exists(wins_path)) stop("Missing nonempty windows parquet: ", wins_path)
-  if (!file.exists(predictor_path)) stop("Missing predictor raster: ", predictor_path)
+  if (!file.exists(zidx_path)) stop("Missing Zidx raster: ", zidx_path, call. = FALSE)
+  if (!file.exists(ids_path))  stop("Missing ID index parquet: ", ids_path, call. = FALSE)
+  if (!file.exists(wins_path)) stop("Missing nonempty windows parquet: ", wins_path, call. = FALSE)
+  if (!file.exists(predictor_path)) stop("Missing predictor raster: ", predictor_path, call. = FALSE)
 
   Zidx <- terra::rast(zidx_path)
-
-  ids_tbl <- arrow::read_parquet(ids_path, as_data_frame = TRUE)
-  if (!"GRIDCODE" %in% names(ids_tbl)) stop("Index parquet lacks GRIDCODE column: ", ids_path)
-  if ("idx" %in% names(ids_tbl)) ids_tbl <- ids_tbl[order(ids_tbl$idx), , drop = FALSE]
-
-  ids_raw <- ids_tbl$GRIDCODE
-  ids <- if (max(ids_raw, na.rm = TRUE) <= .Machine$integer.max) {
-    as.integer(ids_raw)
-  } else {
-    as.numeric(ids_raw)
-  }
-
-  wins_dt <- arrow::read_parquet(wins_path, as_data_frame = TRUE)
   R <- terra::rast(predictor_path)
 
   if (!terra::same.crs(R, Zidx)) {
@@ -55,7 +51,8 @@ sr_zonal_region <- function(
       stop(
         "CRS mismatch between predictor and Zidx. ",
         "Supply a predictor in the same CRS as Zidx (recommended), ",
-        "or set project_predictor_if_needed = TRUE."
+        "or set project_predictor_if_needed = TRUE.",
+        call. = FALSE
       )
     }
     message("Projecting predictor to match Zidx CRS (one-time)...")
@@ -69,14 +66,13 @@ sr_zonal_region <- function(
     zone_dir        = zone_dir,
     grid_index_path = ids_path,
     zidx_path       = zidx_path,
-    wins_path       = if (file.exists(wins_path)) wins_path else NULL
+    wins_path       = wins_path
   )
 
   out <- sr_zonal(
-    predictor = R,
-    zones = zones,
-    method = method,
-    stats = stats,
+    predictor      = R,
+    zones          = zones,
+    stats          = stats,
     progress_every = progress_every
   )
 

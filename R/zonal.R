@@ -13,8 +13,10 @@
 #'   (1) an `sr_zones` object returned by [sr_optimize_zones()], or
 #'   (2) a list returned by [sr_optimize_zones()] (expects `zidx_path`, `grid_index_path`, and `wins_path`), or
 #'   (3) a list with `indexed_zones_path` (alias of `zidx_path`), `grid_index_path`, and `wins_path`, and optionally `ids`.
-#' @param stats Character vector of statistics to compute. Currently supported: `"sum"`, `"mean"`, `"n"`.
-#' @param method Resampling method when aligning predictor to zones (default `"near"`).
+#' @param stats Character vector of statistics to compute. Currently supported: `"sum"`, `"mean"`, `"count"` (alias: `"n"`).
+#' @param method Resampling method. Currently only `"near"` is supported.
+#'   Zonal alignment uses nearest-cell center matching (no interpolation).
+#'   If projection is required, this method is also used in `terra::project()`.
 #' @param progress_every Print progress every N windows (0 disables).
 #' @return A `data.table` with one row per zone and columns for requested statistics.
 #' @export
@@ -22,7 +24,7 @@ sr_zonal <- function(
     predictor,
     zones,
     method = "near",
-    stats = c("sum", "mean"),
+    stats = c("sum", "mean", "count"),
     progress_every = 0L
 ) {
   if (is.character(predictor) && length(predictor) == 1L) {
@@ -72,15 +74,34 @@ sr_zonal <- function(
     ids,
     windows,
     method = "near",
-    stats = c("sum", "mean"),
+    stats = c("sum", "mean", "n"),
     progress_every = 0L
 ) {
+
   stats <- unique(stats)
-  ok <- c("sum", "mean", "n")
+
+  # Allow both "n" and "count" (aliases)
+  ok <- c("sum", "mean", "n", "count")
   bad <- setdiff(stats, ok)
   if (length(bad)) {
     stop("Unsupported `stats`: ", paste(bad, collapse = ", "),
          ". Supported: ", paste(ok, collapse = ", "), call. = FALSE)
+  }
+
+  want_n     <- "n" %in% stats
+  want_count <- "count" %in% stats
+
+  # Internal computation uses `n`; normalize "count" -> "n"
+  stats_internal <- stats
+  stats_internal[stats_internal == "count"] <- "n"
+  stats_internal <- unique(stats_internal)
+
+  # ---- method check (FAIL FAST) ----
+  if (!is.character(method) || length(method) != 1L || is.na(method)) {
+    stop("`method` must be a single, non-NA character string.", call. = FALSE)
+  }
+  if (!identical(method, "near")) {
+    stop("Only method = 'near' is currently supported.", call. = FALSE)
   }
 
   wins_dt <- windows
@@ -186,10 +207,13 @@ sr_zonal <- function(
 
   out <- data.table::data.table(GRIDCODE = ids)
 
-  if ("sum" %in% stats) out[["sum"]] <- sumv
-  if ("n" %in% stats)   out[["n"]]   <- n
+  if ("sum" %in% stats_internal) out[["sum"]] <- sumv
 
-  if ("mean" %in% stats) {
+  # Emit `n` and/or `count` depending on what user requested
+  if (want_n)     out[["n"]]     <- n
+  if (want_count) out[["count"]] <- n
+
+  if ("mean" %in% stats_internal) {
     m <- rep(NA_real_, length(sumv))
     okn <- n > 0L
     m[okn] <- sumv[okn] / n[okn]

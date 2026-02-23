@@ -10,7 +10,7 @@ sr_zonal_region(
   predictor_path,
   blocksize,
   method = "near",
-  stats = "sum",
+  stats = c("sum", "mean", "count"),
   progress_every = 0L,
   project_predictor_if_needed = FALSE
 )
@@ -24,9 +24,11 @@ sr_zonal_region(
 
 \item{blocksize}{Integer block size used when building zone artifacts.}
 
-\item{method}{Resampling method (default "near"). Used only if projecting predictor.}
+\item{method}{Resampling method. Currently only \code{"near"} is supported.
+Zonal alignment uses nearest-cell center matching (no interpolation).
+If projection is required, this method is also used in \code{terra::project()}.}
 
-\item{stats}{Character vector of statistics. Supported: \code{"sum"}, \code{"mean"}, \code{"n"}.}
+\item{stats}{Character vector of statistics. Supported: \code{"sum"}, \code{"mean"}, \code{"count"} (alias: \code{"n"}).}
 
 \item{progress_every}{Print progress every N windows (0 disables).}
 

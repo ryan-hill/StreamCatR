@@ -8,7 +8,7 @@ sr_zonal(
   predictor,
   zones,
   method = "near",
-  stats = c("sum", "mean"),
+  stats = c("sum", "mean", "count"),
   progress_every = 0L
 )
 }
@@ -20,9 +20,11 @@ sr_zonal(
 (2) a list returned by \code{\link[=sr_optimize_zones]{sr_optimize_zones()}} (expects \code{zidx_path}, \code{grid_index_path}, and \code{wins_path}), or
 (3) a list with \code{indexed_zones_path} (alias of \code{zidx_path}), \code{grid_index_path}, and \code{wins_path}, and optionally \code{ids}.}
 
-\item{method}{Resampling method when aligning predictor to zones (default \code{"near"}).}
+\item{method}{Resampling method. Currently only \code{"near"} is supported.
+Zonal alignment uses nearest-cell center matching (no interpolation).
+If projection is required, this method is also used in \code{terra::project()}.}
 
-\item{stats}{Character vector of statistics to compute. Currently supported: \code{"sum"}, \code{"mean"}, \code{"n"}.}
+\item{stats}{Character vector of statistics to compute. Currently supported: \code{"sum"}, \code{"mean"}, \code{"count"} (alias: \code{"n"}).}
 
 \item{progress_every}{Print progress every N windows (0 disables).}
 }
