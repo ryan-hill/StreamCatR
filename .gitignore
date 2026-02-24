@@ -8,3 +8,4 @@ src/*.dll
 *.Rproj
 .Rbuildignore
 inst/doc
+^StreamCatR.Rcheck$
