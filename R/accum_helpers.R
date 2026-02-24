@@ -83,9 +83,12 @@ NULL
   }
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
-  # Build graph
   e <- edges[, c(from_col, to_col)]
   names(e) <- c("FROM", "TO")
+
+  # Match 02: drop outlet/zero endpoints before graph build
+  e <- e[!is.na(e$FROM) & !is.na(e$TO), , drop = FALSE]
+  e <- e[e$FROM != 0 & e$TO != 0, , drop = FALSE]
 
   # Vertex set: all IDs seen (excluding 0)
   vids <- sort(unique(c(e$FROM, e$TO)))
