@@ -36,7 +36,10 @@ sr_streamcat_framework <- function(
     overwrite = FALSE,
     ...
 ) {
-  preset <- match.arg(preset)
+  preset <- match.arg(preset, choices = c(
+    "none",
+    "mr_nhdplus"
+  ))
   if (!is.null(MRNHDPlus)) preset <- if (isTRUE(MRNHDPlus)) "mr_nhdplus" else "none"
 
   if (dir.exists(out_dir)) {
@@ -60,8 +63,9 @@ sr_streamcat_framework <- function(
     edges <- .sr_read_edges(from_to, from_col = "FROMCOMID", to_col = "TOCOMID")
     edges <- .sr_prepare_edges_mr_nhdplus(
       edges,
+      translation      = paths$translation,
       special_handling = paths$special_handling,
-      ftype = paths$ftype
+      ftype            = paths$ftype
     )
 
     if (is.function(edge_filter)) {
