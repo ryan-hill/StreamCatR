@@ -50,66 +50,109 @@ sr_optimize_zones <- function(
 
   src <- terra::rast(catchment_path)
 
+  # Reproject if needed; write a single temp file with tiling/compression for fast downstream I/O
   tmp_proj <- NULL
   if (!terra::same.crs(src, target_crs)) {
     tmp_proj <- tempfile(fileext = ".tif")
-    src <- terra::project(src, target_crs, method = "near", filename = tmp_proj, overwrite = TRUE)
+    src <- terra::project(
+      src, target_crs, method = "near",
+      filename = tmp_proj, overwrite = TRUE,
+      gdal = c(
+        "TILED=YES", "COMPRESS=ZSTD", "ZSTD_LEVEL=9",
+        "BIGTIFF=YES", "NUM_THREADS=ALL_CPUS"
+      )
+    )
   }
 
-  tmp_work <- tempfile(fileext = ".tif")
-  terra::writeRaster(
-    src, filename = tmp_work, overwrite = TRUE, datatype = "INT4S",
-    gdal = c(
-      "TILED=YES", "COMPRESS=ZSTD", "ZSTD_LEVEL=9",
-      "BIGTIFF=YES", "NUM_THREADS=ALL_CPUS",
-      sprintf("BLOCKXSIZE=%d", blocksize),
-      sprintf("BLOCKYSIZE=%d", blocksize)
-    )
-  )
-  work <- terra::rast(tmp_work)
-
-  # (Optional) cleanup of temp files on exit; safe because we only remove after function ends
+  # Cleanup of temp projection on exit
   on.exit({
     if (!is.null(tmp_proj) && file.exists(tmp_proj)) suppressWarnings(file.remove(tmp_proj))
-    if (!is.null(tmp_work) && file.exists(tmp_work)) suppressWarnings(file.remove(tmp_work))
   }, add = TRUE)
 
-  work_trim <- try(terra::trim(work), silent = TRUE)
-  if (inherits(work_trim, "try-error")) work_trim <- work
-
+  # Trim to remove exterior NA rows/cols; drop factor levels if present
+  work_trim <- try(terra::trim(src), silent = TRUE)
+  if (inherits(work_trim, "try-error")) work_trim <- src
   if (terra::is.factor(work_trim)) {
     try({ levels(work_trim) <- NULL }, silent = TRUE)
   }
 
+  # Build or read GRIDCODE -> idx mapping
+  ids_tbl <- NULL
   if (file.exists(grid_index_path) && !overwrite_rasters) {
-    message("Index exists, skipping: ", grid_index_path)
+    message("Index exists, skipping rebuild: ", grid_index_path)
+    ids_tbl <- arrow::read_parquet(grid_index_path, as_data_frame = TRUE)
+    if (!"GRIDCODE" %in% names(ids_tbl) || !"idx" %in% names(ids_tbl)) {
+      stop("Index parquet lacks GRIDCODE/idx columns: ", grid_index_path, call. = FALSE)
+    }
   } else {
+    # Use terra::freq (C++ streaming) to get unique GRIDCODEs
+    fq <- suppressWarnings(terra::freq(work_trim, useNA = FALSE))
+    # 'fq' may be a matrix or data.frame with columns "value" and "count"
+    if (is.null(fq) || nrow(fq) == 0L) {
+      # Empty raster case: write empty artifacts and return
+      ids_tbl <- data.frame(GRIDCODE = integer(), idx = integer())
+      arrow::write_parquet(ids_tbl, grid_index_path, compression = "zstd")
+      if (!file.exists(zidx_path) || overwrite_rasters) {
+        # Write an empty Zidx with the same extent/resolution as work_trim
+        terra::writeRaster(
+          work_trim * NA, zidx_path, overwrite = TRUE, datatype = "INT4S",
+          gdal = c(
+            "TILED=YES", "COMPRESS=ZSTD", "ZSTD_LEVEL=9",
+            "BIGTIFF=YES", "NUM_THREADS=ALL_CPUS",
+            sprintf("BLOCKXSIZE=%d", blocksize),
+            sprintf("BLOCKYSIZE=%d", blocksize)
+          )
+        )
+      }
+      if (isTRUE(build_windows) && (!file.exists(wins_path) || overwrite_rasters)) {
+        arrow::write_parquet(
+          data.frame(row = integer(), col = integer(), nrows = integer(), ncols = integer()),
+          wins_path, compression = "zstd"
+        )
+      }
+      return(invisible(sr_zones(
+        region_id       = region_id,
+        blocksize       = blocksize,
+        zone_dir        = outdir,
+        grid_index_path = grid_index_path,
+        zidx_path       = zidx_path,
+        wins_path       = if (isTRUE(build_windows)) wins_path else NULL
+      )))
+    }
+
+    # Normalize 'fq' to a data.frame and extract unique GRIDCODEs
+    fq_df <- as.data.frame(fq)
+    if (!("value" %in% names(fq_df))) {
+      stop("Unexpected result from terra::freq; missing 'value' column.", call. = FALSE)
+    }
+
+    # Avoid integer64 surprises: use integer if within range, else numeric
+    vals <- fq_df[["value"]]
+    if (is.numeric(vals) && all(is.finite(vals))) {
+      if (max(abs(vals), na.rm = TRUE) <= .Machine$integer.max) {
+        gridcodes <- as.integer(vals)
+      } else {
+        gridcodes <- as.numeric(vals) # keep as double for very large codes
+      }
+    } else {
+      stop("Non-numeric GRIDCODE values are not supported.", call. = FALSE)
+    }
+
+    gridcodes <- sort(unique(gridcodes))
+    ids_tbl <- data.frame(GRIDCODE = gridcodes, idx = seq_along(gridcodes))
+
+    # Write parquet (zstd)
     if (file.exists(grid_index_path)) safe_unlink(grid_index_path, TRUE)
-    .sr_build_gridcode_index_parquet_stream(work_trim, grid_index_path, progress_every = progress_every)
+    arrow::write_parquet(ids_tbl, grid_index_path, compression = "zstd")
   }
 
-  ids_tbl <- arrow::read_parquet(grid_index_path, as_data_frame = TRUE)
-  if (!"GRIDCODE" %in% names(ids_tbl)) {
-    stop("Index parquet lacks GRIDCODE column: ", grid_index_path, call. = FALSE)
-  }
-
-  # Avoid integer64 surprises
-  ids <- if (max(ids_tbl$GRIDCODE, na.rm = TRUE) <= .Machine$integer.max) {
-    as.integer(ids_tbl$GRIDCODE)
-  } else {
-    as.numeric(ids_tbl$GRIDCODE)
-  }
-
-  Zidx <- terra::app(work_trim, fun = function(x) {
-    out <- match(x, ids)
-    out[is.na(x)] <- NA_integer_
-    as.integer(out)
-  })
-
+  # Build Zidx via C++ substitution, then stream-write to disk
   if (file.exists(zidx_path) && !overwrite_rasters) {
     message("Zidx exists, skipping: ", zidx_path)
   } else {
     if (file.exists(zidx_path)) safe_unlink(zidx_path, TRUE)
+    lut <- data.frame(from = ids_tbl$GRIDCODE, to = ids_tbl$idx)
+    Zidx <- terra::subs(work_trim, lut, by = "from", which = "to", others = NA_integer_)
     terra::writeRaster(
       Zidx, zidx_path, overwrite = TRUE, datatype = "INT4S",
       gdal = c(
@@ -121,6 +164,7 @@ sr_optimize_zones <- function(
     )
   }
 
+  # Compute non-empty windows directly from work_trim with C++ reducer
   wins_out <- NULL
   if (isTRUE(build_windows)) {
     if (file.exists(wins_path) && !overwrite_rasters) {
@@ -129,19 +173,14 @@ sr_optimize_zones <- function(
     } else {
       if (file.exists(wins_path)) safe_unlink(wins_path, TRUE)
 
-      Zidx_disk <- terra::rast(zidx_path)
-      nr <- terra::nrow(Zidx_disk)
-      nc <- terra::ncol(Zidx_disk)
+      nr <- terra::nrow(work_trim)
+      nc <- terra::ncol(work_trim)
 
-      occ <- terra::aggregate(
-        !is.na(Zidx_disk),
-        fact = c(blocksize, blocksize),
-        fun  = function(x) as.integer(any(as.logical(x)))
-      )
+      occ <- terra::aggregate(!is.na(work_trim), fact = c(blocksize, blocksize), fun = "sum")
 
       vals <- terra::values(occ, mat = FALSE)
-      if (any(vals == 1L, na.rm = TRUE)) {
-        cells <- which(vals == 1L)
+      if (any(vals > 0L, na.rm = TRUE)) {
+        cells <- which(vals > 0L)
         rc <- terra::rowColFromCell(occ, cells)
         r0 <- (rc[, 1L] - 1L) * blocksize + 1L
         c0 <- (rc[, 2L] - 1L) * blocksize + 1L
@@ -166,6 +205,3 @@ sr_optimize_zones <- function(
     wins_path       = if (isTRUE(build_windows)) wins_path else NULL
   ))
 }
-
-
-

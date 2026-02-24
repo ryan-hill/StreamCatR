@@ -57,6 +57,7 @@
 }
 
 # ------------- helper: unique GRIDCODE -> idx parquet (streamed) -------------
+# Helper function (no longer used by sr_optimize_zones, kept for backward compatibility)
 .sr_build_gridcode_index_parquet_stream <- function(Z, out_file, progress_every = 0L) {
   stopifnot(inherits(Z, "SpatRaster"))
   bs <- terra::blocks(Z)
