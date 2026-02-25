@@ -33,5 +33,6 @@ Imports:
     ps,
     dplyr,
     igraph,
-    rlang
+    rlang,
+    fastmatch
 VignetteBuilder: knitr
