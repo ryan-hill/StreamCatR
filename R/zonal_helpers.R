@@ -107,53 +107,33 @@
 
 # ------------- helper: build non-empty windows parquet -----------------------
 # Scans Zidx in tiles of size win_nrows x win_ncols; records windows with any non-NA.
-.sr_build_nonempty_windows <- function(Zidx,
-                                       win_nrows = 512L,
-                                       win_ncols = 512L,
-                                       out_parquet = NULL,
-                                       progress_every = 500L) {
-  stopifnot(inherits(Zidx, "SpatRaster"))
-  stopifnot(terra::nlyr(Zidx) == 1L)
+.sr_build_nonempty_windows_from_zidx_disk <- function(zidx_path, blocksize, out_parquet) {
+  Zidx_disk <- terra::rast(zidx_path)
+  nr <- terra::nrow(Zidx_disk)
+  nc <- terra::ncol(Zidx_disk)
 
-  nr <- terra::nrow(Zidx)
-  nc <- terra::ncol(Zidx)
+  occ <- terra::aggregate(
+    !is.na(Zidx_disk),
+    fact = c(as.integer(blocksize), as.integer(blocksize)),
+    fun  = function(x) as.integer(any(x != 0))
+  )
 
-  # window grid
-  row_starts <- seq.int(1L, nr, by = win_nrows)
-  col_starts <- seq.int(1L, nc, by = win_ncols)
+  vals <- terra::values(occ, mat = FALSE)
 
-  # all windows as (row, col, nrows, ncols)
-  win <- data.table::CJ(row = row_starts, col = col_starts)
-  win[, nrows := pmin(win_nrows, nr - row + 1L)]
-  win[, ncols := pmin(win_ncols, nc - col + 1L)]
-  win[, win_id := .I]
-
-  keep <- logical(nrow(win))
-
-  terra::readStart(Zidx)
-  on.exit(terra::readStop(Zidx), add = TRUE)
-
-  for (i in seq_len(nrow(win))) {
-    v <- terra::readValues(
-      Zidx,
-      row = win$row[i], nrows = win$nrows[i],
-      col = win$col[i], ncols = win$ncols[i],
-      mat = FALSE
-    )
-    keep[i] <- any(!is.na(v))
-
-    if (progress_every > 0L && (i %% progress_every == 0L)) {
-      message(sprintf("  scanned windows %d / %d", i, nrow(win)))
-    }
+  if (any(vals == 1L, na.rm = TRUE)) {
+    cells <- which(vals == 1L)
+    rc <- terra::rowColFromCell(occ, cells)
+    r0 <- (rc[, 1L] - 1L) * blocksize + 1L
+    c0 <- (rc[, 2L] - 1L) * blocksize + 1L
+    nrw <- pmin(blocksize, nr - r0 + 1L)
+    ncw <- pmin(blocksize, nc - c0 + 1L)
+    wins_dt <- data.frame(row = r0, col = c0, nrows = nrw, ncols = ncw)
+  } else {
+    wins_dt <- data.frame(row = integer(), col = integer(), nrows = integer(), ncols = integer())
   }
 
-  out <- win[keep]
-
-  if (!is.null(out_parquet)) {
-    arrow::write_parquet(out, out_parquet, compression = "zstd")
-  }
-
-  out
+  arrow::write_parquet(wins_dt, out_parquet, compression = "zstd")
+  invisible(out_parquet)
 }
 
 .sr_auto_parallel_layout <- function(n_tasks,
