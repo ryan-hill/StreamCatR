@@ -64,19 +64,19 @@ sr_optimize_zones <- function(
   }
 
   # ---- 3) Build GRIDCODE -> idx mapping (streamed, like 01...R) ----
-  if (file.exists(grid_index_path) && !isTRUE(overwrite_rasters)) {
-    message("Index exists, skipping: ", grid_index_path)
-  } else {
+  built_now <- !(file.exists(grid_index_path) && !isTRUE(overwrite_rasters))
+
+  if (isTRUE(built_now)) {
     if (file.exists(grid_index_path)) .sr_safe_unlink(grid_index_path, TRUE)
-    .sr_build_gridcode_index_parquet_stream(
+    ids_tbl <- .sr_build_gridcode_index_parquet_stream(
       Z = work_trim,
       out_file = grid_index_path,
       progress_every = progress_every
     )
+  } else {
+    message("Index exists, skipping: ", grid_index_path)
+    ids_tbl <- arrow::read_parquet(grid_index_path, as_data_frame = TRUE)
   }
-
-  # Read mapping
-  ids_tbl <- arrow::read_parquet(grid_index_path, as_data_frame = TRUE)
   if (!all(c("GRIDCODE", "idx") %in% names(ids_tbl))) {
     stop("Index parquet lacks GRIDCODE/idx columns: ", grid_index_path, call. = FALSE)
   }

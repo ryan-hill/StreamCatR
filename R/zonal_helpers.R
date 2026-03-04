@@ -4,6 +4,7 @@
 #'
 #' @keywords internal
 #' @noRd
+
 .sr_ensure_windows <- function(zones, progress_every = 500L, overwrite = FALSE) {
   if (!inherits(zones, "sr_zones")) {
     stop("`zones` must be an sr_zones object.", call. = FALSE)
@@ -24,36 +25,16 @@
     return(zones)
   }
 
-  # Build windows and cache
-  Zidx <- terra::rast(zones$zidx_path)
-
-  # Use the fast occupancy aggregate method (your existing approach)
-  nr <- terra::nrow(Zidx); nc <- terra::ncol(Zidx)
-
-  occ <- terra::aggregate(
-    !is.na(Zidx),
-    fact = c(zones$blocksize, zones$blocksize),
-    fun  = function(x) as.integer(any(as.logical(x)))
+  # Build windows (single source of truth)
+  .sr_build_nonempty_windows_from_zidx_disk(
+    zidx_path = zones$zidx_path,
+    blocksize = zones$blocksize,
+    out_parquet = wins_path
   )
-
-  vals <- terra::values(occ, mat = FALSE)
-
-  if (any(vals == 1L, na.rm = TRUE)) {
-    cells <- which(vals == 1L)
-    rc <- terra::rowColFromCell(occ, cells)
-    r0 <- (rc[, 1L] - 1L) * zones$blocksize + 1L
-    c0 <- (rc[, 2L] - 1L) * zones$blocksize + 1L
-    nrw <- pmin(zones$blocksize, nr - r0 + 1L)
-    ncw <- pmin(zones$blocksize, nc - c0 + 1L)
-    wins_dt <- data.frame(row = r0, col = c0, nrows = nrw, ncols = ncw)
-  } else {
-    wins_dt <- data.frame(row = integer(), col = integer(), nrows = integer(), ncols = integer())
-  }
-
-  arrow::write_parquet(wins_dt, wins_path, compression = "zstd")
 
   zones$wins_path <- wins_path
   zones
+}
 }
 
 # ------------- helper: unique GRIDCODE -> idx parquet (streamed) -------------
@@ -87,7 +68,7 @@
   if (length(ids_chr) == 0L) {
     dt <- data.frame(GRIDCODE = numeric(0), idx = integer(0))
     arrow::write_parquet(dt, out_file, compression = "zstd")
-    return(invisible(out_file))
+    return(invisible(dt))
   }
 
   ids_num <- suppressWarnings(as.numeric(ids_chr))
@@ -102,7 +83,7 @@
 
   dt <- data.frame(GRIDCODE = gridcodes, idx = seq_along(gridcodes))
   arrow::write_parquet(dt, out_file, compression = "zstd")
-  invisible(out_file)
+  invisible(dt)
 }
 
 # ------------- helper: build non-empty windows parquet -----------------------
@@ -115,7 +96,7 @@
   occ <- terra::aggregate(
     !is.na(Zidx_disk),
     fact = c(as.integer(blocksize), as.integer(blocksize)),
-    fun  = function(x) as.integer(any(x != 0))
+    fun  = function(x) as.integer(any(x))
   )
 
   vals <- terra::values(occ, mat = FALSE)
