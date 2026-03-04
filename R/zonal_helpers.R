@@ -60,22 +60,21 @@
 # Helper function (no longer used by sr_optimize_zones, kept for backward compatibility)
 .sr_build_gridcode_index_parquet_stream <- function(Z, out_file, progress_every = 0L) {
   stopifnot(inherits(Z, "SpatRaster"))
-  bs <- terra::blocks(Z)
-  n_blocks <- if (!is.null(nrow(bs))) nrow(bs) else length(bs$row)
-  if (is.null(n_blocks) || n_blocks <= 0L) stop("Unexpected blocks() structure")
 
-  # Use an environment as a hash set to avoid repeated unions
+  bs <- terra::blocks(Z)
+  n_blocks <- nrow(bs)
+  if (is.null(n_blocks) || n_blocks <= 0L) stop("Unexpected blocks() structure", call. = FALSE)
+
   seen <- new.env(parent = emptyenv())
 
   terra::readStart(Z)
   on.exit(terra::readStop(Z), add = TRUE)
 
   for (i in seq_len(n_blocks)) {
-    b_row   <- bs$row[i]
-    b_nrows <- bs$nrows[i]
-    z <- terra::readValues(Z, row = b_row, nrows = b_nrows, mat = FALSE)
+    z <- terra::readValues(Z, row = bs$row[i], nrows = bs$nrows[i], mat = FALSE)
     z <- z[!is.na(z)]
     if (!length(z)) next
+
     uz <- unique(z)
     for (v in uz) seen[[as.character(v)]] <- TRUE
 
@@ -84,8 +83,24 @@
     }
   }
 
-  ids <- sort(as.integer(ls(seen)))
-  dt  <- data.frame(GRIDCODE = ids, idx = seq_along(ids))
+  ids_chr <- ls(seen, all.names = TRUE)
+  if (length(ids_chr) == 0L) {
+    dt <- data.frame(GRIDCODE = numeric(0), idx = integer(0))
+    arrow::write_parquet(dt, out_file, compression = "zstd")
+    return(invisible(out_file))
+  }
+
+  ids_num <- suppressWarnings(as.numeric(ids_chr))
+  ids_num <- ids_num[is.finite(ids_num)]
+  ids_num <- sort(unique(ids_num))
+
+  gridcodes <- if (length(ids_num) && max(abs(ids_num), na.rm = TRUE) <= .Machine$integer.max) {
+    as.integer(ids_num)
+  } else {
+    ids_num
+  }
+
+  dt <- data.frame(GRIDCODE = gridcodes, idx = seq_along(gridcodes))
   arrow::write_parquet(dt, out_file, compression = "zstd")
   invisible(out_file)
 }
@@ -197,3 +212,23 @@
     terra_memfrac = terra_memfrac
   )
 }
+
+# Remove target and common GDAL sidecars when overwriting
+.sr_safe_unlink <- function(path, do = TRUE) {
+  if (!isTRUE(do)) return(invisible(FALSE))
+  sidecars <- c("", ".aux.xml", ".ovr", ".msk", ".msk.aux.xml")
+  files <- file.path(dirname(path), paste0(basename(path), sidecars))
+  suppressWarnings(file.remove(files[file.exists(files)]))
+  invisible(TRUE)
+}
+
+# CRS equality with fallback for older terra versions
+.sr_same_crs <- function(x, crs) {
+  if (exists("same.crs", where = asNamespace("terra"), inherits = FALSE)) {
+    return(terra::same.crs(x, crs))
+  }
+  # fallback (imperfect but works for many older installs)
+  identical(terra::crs(x), crs)
+}
+
+
