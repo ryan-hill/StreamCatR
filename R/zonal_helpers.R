@@ -35,7 +35,7 @@
   zones$wins_path <- wins_path
   zones
 }
-}
+
 
 # ------------- helper: unique GRIDCODE -> idx parquet (streamed) -------------
 # Helper function (no longer used by sr_optimize_zones, kept for backward compatibility)
@@ -193,3 +193,43 @@
 }
 
 
+#' @keywords internal
+#' @noRd
+.sr_same_crs <- function(x, crs) {
+  if (exists("same.crs", where = asNamespace("terra"), inherits = FALSE)) {
+    return(terra::same.crs(x, crs))
+  }
+  identical(terra::crs(x), crs)
+}
+
+#' @keywords internal
+#' @noRd
+.sr_init_accumulator <- function(prefer_map = TRUE) {
+  # Prefer compiled symbols exported by StreamCatR (accum.cpp in src/)
+  ns <- asNamespace("StreamCatR")
+
+  has_idx <- exists("acc_sum_n_idx1K", envir = ns, mode = "function")
+  has_map <- exists("acc_sum_n_map_centers1K", envir = ns, mode = "function")
+
+  if (has_idx) {
+    return(invisible(list(
+      acc_idx = get("acc_sum_n_idx1K", envir = ns, mode = "function"),
+      acc_map = if (isTRUE(prefer_map) && has_map) get("acc_sum_n_map_centers1K", envir = ns, mode = "function") else NULL
+    )))
+  }
+
+  # Optional: support a standalone helper package if you used that in dev
+  if (requireNamespace("scaccum", quietly = TRUE)) {
+    acc_idx <- scaccum::acc_sum_n_idx1K
+    acc_map <- NULL
+    if (isTRUE(prefer_map) && ("acc_sum_n_map_centers1K" %in% getNamespaceExports("scaccum"))) {
+      acc_map <- scaccum::acc_sum_n_map_centers1K
+    }
+    return(invisible(list(acc_idx = acc_idx, acc_map = acc_map)))
+  }
+
+  stop(
+    "Accumulator not available. Expected acc_sum_n_idx1K (and optionally acc_sum_n_map_centers1K) from StreamCatR/src/accum.cpp.",
+    call. = FALSE
+  )
+}

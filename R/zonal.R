@@ -25,6 +25,8 @@ sr_zonal <- function(
     zones,
     method = "near",
     stats = c("sum", "mean", "count"),
+    pad_cells = 1L,
+    exact_crop = TRUE,
     progress_every = 0L
 ) {
   if (is.character(predictor) && length(predictor) == 1L) {
@@ -55,13 +57,15 @@ sr_zonal <- function(
   ids_raw <- ids_tbl$GRIDCODE
   ids <- if (max(ids_raw, na.rm = TRUE) <= .Machine$integer.max) as.integer(ids_raw) else as.numeric(ids_raw)
 
-  .sr_zonal_engine(
-    predictor      = predictor,
-    indexed_zones  = indexed_zones,
-    ids            = ids,
-    windows        = wins_path,
-    method         = method,
-    stats          = stats,
+  res <- .sr_zonal_engine(
+    predictor = P,
+    indexed_zones = Zidx,
+    ids = ids,
+    windows = wins,
+    method = method,
+    stats = stats,
+    pad_cells = pad_cells,
+    exact_crop = exact_crop,
     progress_every = progress_every
   )
 }
@@ -73,152 +77,211 @@ sr_zonal <- function(
     indexed_zones,
     ids,
     windows,
-    method = "near",
+    method = c("near"),
     stats = c("sum", "mean", "n"),
+    pad_cells = 1L,
+    exact_crop = TRUE,
     progress_every = 0L
 ) {
 
-  stats <- unique(stats)
-
-  # Allow both "n" and "count" (aliases)
-  ok <- c("sum", "mean", "n", "count")
-  bad <- setdiff(stats, ok)
-  if (length(bad)) {
-    stop("Unsupported `stats`: ", paste(bad, collapse = ", "),
-         ". Supported: ", paste(ok, collapse = ", "), call. = FALSE)
+  # allow windows to be either a parquet path (character) or an in-memory data.frame
+  if (is.character(windows) && length(windows) == 1L) {
+    windows <- arrow::read_parquet(windows, as_data_frame = TRUE)
   }
 
-  want_n     <- "n" %in% stats
-  want_count <- "count" %in% stats
+  # keep using the variable name 'Zidx' in the existing body
+  Zidx <- indexed_zones
 
-  # Internal computation uses `n`; normalize "count" -> "n"
-  stats_internal <- stats
-  stats_internal[stats_internal == "count"] <- "n"
-  stats_internal <- unique(stats_internal)
+  method <- match.arg(method)
+  stats <- match.arg(stats, several.ok = TRUE)
+  pad_cells <- as.integer(pad_cells)
+  if (is.na(pad_cells) || pad_cells < 0L) pad_cells <- 0L
 
-  # ---- method check (FAIL FAST) ----
-  if (!is.character(method) || length(method) != 1L || is.na(method)) {
-    stop("`method` must be a single, non-NA character string.", call. = FALSE)
-  }
-  if (!identical(method, "near")) {
-    stop("Only method = 'near' is currently supported.", call. = FALSE)
-  }
+  acc <- .sr_init_accumulator(prefer_map = TRUE)
+  acc_idx <- acc$acc_idx
+  acc_map <- acc$acc_map
+  use_cpp_map <- is.function(acc_map)
 
-  wins_dt <- windows
-  if (is.character(wins_dt) && length(wins_dt) == 1L) {
-    if (!file.exists(wins_dt)) stop("Missing windows parquet: ", wins_dt, call. = FALSE)
-    wins_dt <- arrow::read_parquet(wins_dt, as_data_frame = TRUE)
-  }
-  if (!is.data.frame(wins_dt)) {
-    stop("`windows` must be a parquet path or a data.frame with columns row/col/nrows/ncols.", call. = FALSE)
-  }
-  req <- c("row", "col", "nrows", "ncols")
-  if (!all(req %in% names(wins_dt))) {
-    stop("`windows` must contain columns: ", paste(req, collapse = ", "), call. = FALSE)
-  }
+  # ids: ensure numeric/integer vector used by match
+  # (04c used integer when possible, numeric otherwise)
+  if (length(ids) == 0L) stop("ids is empty", call. = FALSE)
+  ids <- if (max(ids, na.rm = TRUE) <= .Machine$integer.max) as.integer(ids) else as.numeric(ids)
 
-  if (!terra::same.crs(predictor, indexed_zones)) {
-    stop("CRS mismatch between `predictor` and `indexed_zones`. Project predictor first.", call. = FALSE)
-  }
-
-  exZ <- terra::ext(indexed_zones)
-  rZ  <- terra::res(indexed_zones)
-  rxZ <- rZ[1]; ryZ <- rZ[2]
-
-  exP <- terra::ext(predictor)
-  rP  <- terra::res(predictor)
-  rxP <- rP[1]; ryP <- rP[2]
-  ncPred <- terra::ncol(predictor)
-  nrPred <- terra::nrow(predictor)
-
+  # Allocate accumulators: idx is 1..K (K = length(ids))
   K <- length(ids)
   sumv <- numeric(K)
   n    <- integer(K)
 
-  terra::readStart(indexed_zones)
+  exZ <- terra::ext(Zidx)
+  resZ <- terra::res(Zidx)
+  rxZ <- resZ[1]
+  ryZ <- resZ[2]
+
+  exP <- terra::ext(predictor)
+  resP <- terra::res(predictor)
+  rxP <- resP[1]
+  ryP <- resP[2]
+
+  # ReadStart for speed
+  terra::readStart(Zidx)
   terra::readStart(predictor)
   on.exit({
-    terra::readStop(indexed_zones)
+    terra::readStop(Zidx)
     terra::readStop(predictor)
   }, add = TRUE)
 
-  nwin <- nrow(wins_dt)
+  # Iterate windows (must include row/col/nrows/ncols or r0/c0/nr/nc depending on your windows parquet)
+  # Here I assume windows has columns: row, col, nrows, ncols (1-based), matching 04c/05 scripts.
+  stopifnot(all(c("row", "col", "nrows", "ncols") %in% names(windows)))
 
-  for (i in seq_len(nwin)) {
-    r0 <- as.integer(wins_dt$row[i])
-    c0 <- as.integer(wins_dt$col[i])
-    nr <- as.integer(wins_dt$nrows[i])
-    nc <- as.integer(wins_dt$ncols[i])
+  nwin <- nrow(windows)
+  if (nwin == 0L) {
+    return(.sr_finish_stats(sumv, n, stats))
+  }
 
+  for (w in seq_len(nwin)) {
+    r0 <- as.integer(windows$row[w])
+    c0 <- as.integer(windows$col[w])
+    nr <- as.integer(windows$nrows[w])
+    nc <- as.integer(windows$ncols[w])
     if (nr <= 0L || nc <= 0L) next
 
-    idx <- terra::readValues(indexed_zones, row = r0, nrows = nr, col = c0, ncols = nc, mat = FALSE)
-    if (!length(idx) || all(is.na(idx))) next
+    # ---- read idx window from Zidx ----
+    idx <- terra::readValues(Zidx, row = r0, col = c0, nrows = nr, ncols = nc, mat = FALSE)
+    if (!any(is.finite(idx))) next
 
+    # ---- compute zone window extent (04c style) ----
     xminZ <- exZ$xmin + (c0 - 1L) * rxZ
     xmaxZ <- xminZ + nc * rxZ
     ymaxZ <- exZ$ymax - (r0 - 1L) * ryZ
     yminZ <- ymaxZ - nr * ryZ
+    ewin  <- terra::ext(xminZ, xmaxZ, yminZ, ymaxZ)
 
-    col_min <- floor((xminZ - exP$xmin) / rxP) + 1L
-    col_max <- ceiling((xmaxZ - exP$xmin) / rxP)
-    row_min <- floor((exP$ymax - ymaxZ) / ryP) + 1L
-    row_max <- ceiling((exP$ymax - yminZ) / ryP)
+    # ---- padding (critical 04c fix) ----
+    padx <- rxP * pad_cells
+    pady <- ryP * pad_cells
+    ewin_pad <- terra::ext(ewin$xmin - padx, ewin$xmax + padx, ewin$ymin - pady, ewin$ymax + pady)
 
-    col_min <- max(1L, min(ncPred, col_min))
-    col_max <- max(1L, min(ncPred, col_max))
-    row_min <- max(1L, min(nrPred, row_min))
-    row_max <- max(1L, min(nrPred, row_max))
+    # skip if no overlap (04c)
+    if (!terra::relate(ewin_pad, exP, "intersects")) next
+    ewin2 <- terra::intersect(ewin_pad, exP)
+    if (is.null(ewin2)) next
 
-    if (col_max < col_min || row_max < row_min) next
+    # ---- read predictor subwindow corresponding to ewin2 ----
+    if (isTRUE(exact_crop)) {
+      # Closest to 04c: crop semantics
+      Pwin <- terra::crop(predictor, ewin2)
+      if (is.null(Pwin)) next
+      valsP <- terra::values(Pwin, mat = FALSE)
+      if (!length(valsP)) next
+      exPsub <- terra::ext(Pwin)
+      resPsub <- terra::res(Pwin)
+      xminP_sub <- exPsub$xmin
+      ymaxP_sub <- exPsub$ymax
+      rxP_sub <- resPsub[1]
+      ryP_sub <- resPsub[2]
+      ncP <- terra::ncol(Pwin)
+      nrP <- terra::nrow(Pwin)
+    } else {
+      # Faster: compute row/col bounds from ewin2 then readValues directly
+      col_min <- floor((ewin2$xmin - exP$xmin) / rxP) + 1L
+      col_max <- ceiling((ewin2$xmax - exP$xmin) / rxP)
+      row_min <- floor((exP$ymax - ewin2$ymax) / ryP) + 1L
+      row_max <- ceiling((exP$ymax - ewin2$ymin) / ryP)
 
-    ncP <- as.integer(col_max - col_min + 1L)
-    nrP <- as.integer(row_max - row_min + 1L)
+      # clamp
+      col_min <- max(1L, col_min); row_min <- max(1L, row_min)
+      col_max <- min(terra::ncol(predictor), col_max)
+      row_max <- min(terra::nrow(predictor), row_max)
 
-    valsP <- terra::readValues(predictor, row = row_min, nrows = nrP, col = col_min, ncols = ncP, mat = FALSE)
-    if (!length(valsP)) next
+      ncP <- col_max - col_min + 1L
+      nrP <- row_max - row_min + 1L
+      if (ncP <= 0L || nrP <= 0L) next
 
-    xminP_sub <- exP$xmin + (col_min - 1L) * rxP
-    ymaxP_sub <- exP$ymax - (row_min - 1L) * ryP
+      valsP <- terra::readValues(predictor, row = row_min, col = col_min, nrows = nrP, ncols = ncP, mat = FALSE)
+      if (!length(valsP)) next
 
-    acc_sum_n_map_centers1K(
-      idx      = as.integer(idx),
-      xminZ    = xminZ,
-      ymaxZ    = ymaxZ,
-      rxZ      = rxZ,
-      ryZ      = ryZ,
-      nx       = as.integer(nc),
-      ny       = as.integer(nr),
-      valsP    = as.numeric(valsP),
-      xminP    = xminP_sub,
-      ymaxP    = ymaxP_sub,
-      rxP      = rxP,
-      ryP      = ryP,
-      ncP      = as.integer(ncP),
-      nrP      = as.integer(nrP),
-      sumv     = sumv,
-      n        = n
-    )
+      xminP_sub <- exP$xmin + (col_min - 1L) * rxP
+      ymaxP_sub <- exP$ymax - (row_min - 1L) * ryP
+      rxP_sub <- rxP
+      ryP_sub <- ryP
+    }
 
-    if (progress_every > 0L && (i %% progress_every == 0L)) {
-      message(sprintf("processed window %d / %d", i, nwin))
+    # ---- accumulate: prefer C++ map-centers, else R fallback + acc_idx ----
+    if (use_cpp_map) {
+      acc_map(
+        idx      = as.integer(idx),
+        xminZ    = xminZ,
+        ymaxZ    = ymaxZ,
+        rxZ      = rxZ,
+        ryZ      = ryZ,
+        nx       = as.integer(nc),
+        ny       = as.integer(nr),
+        valsP    = as.numeric(valsP),
+        xminP    = xminP_sub,
+        ymaxP    = ymaxP_sub,
+        rxP      = rxP_sub,
+        ryP      = ryP_sub,
+        ncP      = as.integer(ncP),
+        nrP      = as.integer(nrP),
+        sumv     = sumv,
+        n        = n
+      )
+    } else {
+      # 04c fallback: map zone cell centers to predictor indices, then acc_idx
+      # Build x/y centers for zone window
+      xs <- seq(xminZ + rxZ/2, xmaxZ - rxZ/2, by = rxZ)
+      ys <- seq(ymaxZ - ryZ/2, yminZ + ryZ/2, by = -ryZ)
+
+      # Map centers into predictor window (need a raster object for colFromX/rowFromY)
+      Pmap <- if (isTRUE(exact_crop)) Pwin else terra::crop(predictor, ewin2)
+      if (is.null(Pmap)) next
+
+      col_vec <- terra::colFromX(Pmap, xs)
+      row_vec <- terra::rowFromY(Pmap, ys)
+
+      # Ensure valsP/ncP consistent with Pmap
+      if (!isTRUE(exact_crop)) {
+        valsP <- terra::values(Pmap, mat = FALSE)
+        ncP <- terra::ncol(Pmap)
+        nrP <- terra::nrow(Pmap)
+      }
+
+      v <- rep(NA_real_, length(idx))
+      for (iy in seq_len(nr)) {
+        rr <- row_vec[iy]
+        if (is.na(rr)) next
+        base <- (rr - 1L) * ncP
+        out_idx <- (iy - 1L) * nc + seq_len(nc)
+        for (ix in seq_len(nc)) {
+          cc <- col_vec[ix]
+          if (is.na(cc)) next
+          v[out_idx[ix]] <- valsP[base + cc]
+        }
+      }
+
+      acc_idx(as.integer(idx), as.numeric(v), sumv, n)
+    }
+
+    if (progress_every > 0L && (w %% progress_every == 0L)) {
+      message(sprintf("zonal: processed window %d / %d", w, nwin))
     }
   }
 
-  out <- data.table::data.table(GRIDCODE = ids)
+  .sr_finish_stats(sumv, n, stats)
+}
 
-  if ("sum" %in% stats_internal) out[["sum"]] <- sumv
-
-  # Emit `n` and/or `count` depending on what user requested
-  if (want_n)     out[["n"]]     <- n
-  if (want_count) out[["count"]] <- n
-
-  if ("mean" %in% stats_internal) {
+#' @keywords internal
+#' @noRd
+.sr_finish_stats <- function(sumv, n, stats) {
+  out <- list()
+  if ("sum" %in% stats)  out$sum <- sumv
+  if ("n" %in% stats || "count" %in% stats) out$n <- n
+  if ("mean" %in% stats) {
     m <- rep(NA_real_, length(sumv))
-    okn <- n > 0L
-    m[okn] <- sumv[okn] / n[okn]
-    out[["mean"]] <- m
+    ok <- n > 0L
+    m[ok] <- sumv[ok] / n[ok]
+    out$mean <- m
   }
-
   out
 }

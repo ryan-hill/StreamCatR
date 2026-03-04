@@ -16,70 +16,56 @@
 #' @return A `data.table` with one row per GRIDCODE.
 #' @export
 sr_zonal_region <- function(
-    region_id,
-    zone_dir,
     predictor_path,
-    blocksize,
+    zones,                 # sr_zones object
     method = "near",
-    stats = c("sum", "mean", "count"),
-    progress_every = 0L,
-    project_predictor_if_needed = FALSE
+    stats = c("sum", "mean", "n"),
+    pad_cells = 1L,
+    exact_crop = FALSE,
+    progress_every = 0L
 ) {
-  blocksize <- as.integer(blocksize)
+  stopifnot(file.exists(predictor_path))
+  stopifnot(file.exists(zones$zidx_path))
+  stopifnot(file.exists(zones$grid_index_path))
+  stopifnot(!is.null(zones$wins_path) && file.exists(zones$wins_path))
 
-  if (!is.character(method) || length(method) != 1L || is.na(method)) {
-    stop("`method` must be a single, non-NA character string.", call. = FALSE)
-  }
-  if (!identical(method, "near")) {
-    stop("Only method = 'near' is currently supported.", call. = FALSE)
-  }
+  P <- terra::rast(predictor_path)
 
-  zidx_path <- file.path(zone_dir, sprintf("%s_zone_index_block%d.tif", region_id, blocksize))
-  ids_path  <- file.path(zone_dir, sprintf("%s_gridcode_index.parquet", region_id))
-  wins_path <- file.path(zone_dir, sprintf("%s_nonempty_windows_%d.parquet", region_id, blocksize))
-
-  if (!file.exists(zidx_path)) stop("Missing Zidx raster: ", zidx_path, call. = FALSE)
-  if (!file.exists(ids_path))  stop("Missing ID index parquet: ", ids_path, call. = FALSE)
-  if (!file.exists(wins_path)) stop("Missing nonempty windows parquet: ", wins_path, call. = FALSE)
-  if (!file.exists(predictor_path)) stop("Missing predictor raster: ", predictor_path, call. = FALSE)
-
-  Zidx <- terra::rast(zidx_path)
-  R <- terra::rast(predictor_path)
-
-  if (!terra::same.crs(R, Zidx)) {
-    if (!project_predictor_if_needed) {
-      stop(
-        "CRS mismatch between predictor and Zidx. ",
-        "Supply a predictor in the same CRS as Zidx (recommended), ",
-        "or set project_predictor_if_needed = TRUE.",
-        call. = FALSE
-      )
-    }
-    message("Projecting predictor to match Zidx CRS (one-time)...")
+  # Project predictor once if needed (05 behavior)
+  if (!.sr_same_crs(P, terra::crs(terra::rast(zones$zidx_path)))) {
     tmp_pred <- tempfile(fileext = ".tif")
-    R <- terra::project(R, Zidx, method = method, filename = tmp_pred, overwrite = TRUE)
+    on.exit(if (file.exists(tmp_pred)) suppressWarnings(file.remove(tmp_pred)), add = TRUE)
+    P <- terra::project(P, terra::crs(terra::rast(zones$zidx_path)), method = method, filename = tmp_pred, overwrite = TRUE)
   }
 
-  zones <- sr_zones(
-    region_id       = region_id,
-    blocksize       = blocksize,
-    zone_dir        = zone_dir,
-    grid_index_path = ids_path,
-    zidx_path       = zidx_path,
-    wins_path       = wins_path
-  )
+  Zidx <- terra::rast(zones$zidx_path)
 
-  out <- sr_zonal(
-    predictor      = R,
-    zones          = zones,
-    stats          = stats,
+  # ids in idx order (05 behavior)
+  ids_tbl <- arrow::read_parquet(zones$grid_index_path, as_data_frame = TRUE)
+  ids_tbl <- ids_tbl[order(ids_tbl$idx), , drop = FALSE]
+  ids <- ids_tbl$GRIDCODE
+
+  # windows
+  wins <- arrow::read_parquet(zones$wins_path, as_data_frame = TRUE)
+
+  # run
+  res <- .sr_zonal_engine(
+    predictor = P,
+    indexed_zones = Zidx,
+    ids = ids,
+    windows = wins,
+    method = method,
+    stats = stats,
+    pad_cells = pad_cells,
+    exact_crop = exact_crop,
     progress_every = progress_every
   )
 
-  attr(out, "region_id")      <- region_id
-  attr(out, "predictor_path") <- predictor_path
-  attr(out, "blocksize")      <- blocksize
-  attr(out, "paths") <- list(zidx = zidx_path, ids = ids_path, wins = wins_path, predictor = predictor_path)
+  # attach GRIDCODE labeling (05 style output)
+  out <- data.frame(GRIDCODE = ids, stringsAsFactors = FALSE)
+  if (!is.null(res$sum))  out$sum <- res$sum
+  if (!is.null(res$n))    out$n <- res$n
+  if (!is.null(res$mean)) out$mean <- res$mean
 
   out
 }
