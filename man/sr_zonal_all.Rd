@@ -40,7 +40,8 @@ sr_zonal_all(
 
 \item{reserve_cores}{Integer number of CPU cores to leave unused.}
 
-\item{prefer_threads_per_worker}{Logical or integer tuning value passed to \code{\link[=.sr_auto_parallel_layout]{.sr_auto_parallel_layout()}}.}
+\item{prefer_threads_per_worker}{Logical or integer tuning value used by the internal
+parallel-layout heuristic.}
 
 \item{max_workers}{Maximum number of parallel workers to use.}
 

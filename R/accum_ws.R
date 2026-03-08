@@ -79,13 +79,15 @@ sr_accumulate_ws <- function(
       # If no translation, assume zonal_id_col is the network id
       z[[net_id_col]] <- z[[zonal_id_col]]
     }
-    z <- z |>
-      dplyr::group_by(.data[[net_id_col]]) |>
-      dplyr::summarise(
-        !!sum_col   := sum(.data[[sum_col]], na.rm = TRUE),
-        !!count_col := sum(.data[[count_col]], na.rm = TRUE),
-        .groups = "drop"
-      )
+    z <- dplyr::summarise(
+      dplyr::group_by(
+        z,
+        .data[[net_id_col]]
+      ),
+      !!sum_col   := sum(.data[[sum_col]], na.rm = TRUE),
+      !!count_col := sum(.data[[count_col]], na.rm = TRUE),
+      .groups = "drop"
+    )
   }
 
   # Read staged upstream pairs dataset

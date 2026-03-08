@@ -19,7 +19,8 @@ Suggests:
     testthat (>= 3.0.0),
     rappdirs,
     knitr,
-    rmarkdown
+    rmarkdown,
+    ps
 Config/testthat/edition: 3
 LinkingTo: 
     Rcpp
@@ -30,9 +31,7 @@ Imports:
     Rcpp,
     future,
     future.apply,
-    ps,
     dplyr,
     igraph,
-    rlang,
-    fastmatch
+    rlang
 VignetteBuilder: knitr

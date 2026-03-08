@@ -334,21 +334,23 @@ NULL
   # Build watershed sums by joining UPCOMIDS -> COMID on catchment table
   ds_pairs <- pairs
 
-  ws <- ds_pairs |>
-    dplyr::transmute(
-      COMID    = as.integer(.data$COMID),
-      UPCOMIDS = as.integer(.data$UPCOMIDS)
-    ) |>
-    dplyr::left_join(
-      arrow::Table$create(cat_tbl),
-      by = c("UPCOMIDS" = "COMID")
-    ) |>
-    dplyr::group_by(.data$COMID) |>
-    dplyr::summarise(
-      ws_sum   = sum(.data$cat_sum, na.rm = TRUE),
-      ws_count = sum(.data$cat_count, na.rm = TRUE),
-      .groups = "drop"
-    )
+  ws <- dplyr::summarise(
+    dplyr::group_by(
+      dplyr::left_join(
+        dplyr::transmute(
+          ds_pairs,
+          COMID = as.integer(.data$COMID),
+          UPCOMIDS = as.integer(.data$UPCOMIDS)
+        ),
+        arrow::Table$create(cat_tbl),
+        by = c("UPCOMIDS" = "COMID")
+      ),
+      .data$COMID
+    ),
+    ws_sum   = sum(.data$cat_sum, na.rm = TRUE),
+    ws_count = sum(.data$cat_count, na.rm = TRUE),
+    .groups = "drop"
+  )
 
   ws <- as.data.frame(ws)
 

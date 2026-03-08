@@ -17,26 +17,25 @@ sr_zonal_region(
 \arguments{
 \item{predictor_path}{Path to predictor raster.}
 
+\item{zones}{An \code{sr_zones} object produced by \code{\link[=sr_optimize_zones]{sr_optimize_zones()}} or constructed with \code{\link[=sr_zones]{sr_zones()}}.}
+
 \item{method}{Resampling method. Currently only \code{"near"} is supported.
 Zonal alignment uses nearest-cell center matching (no interpolation).
 If projection is required, this method is also used in \code{terra::project()}.}
 
 \item{stats}{Character vector of statistics. Supported: \code{"sum"}, \code{"mean"}, \code{"count"} (alias: \code{"n"}).}
 
+\item{pad_cells}{Integer predictor-cell padding around each zone window. Default \code{1L}, matching 04c.}
+
+\item{exact_crop}{Logical; if \code{TRUE}, use \code{terra::crop()} for predictor windows, matching 04c most closely.}
+
 \item{progress_every}{Print progress every N windows (0 disables).}
-
-\item{region_id}{Character region identifier used in filenames.}
-
-\item{zone_dir}{Directory containing zone artifacts produced by \code{\link[=sr_optimize_zones]{sr_optimize_zones()}}.}
-
-\item{blocksize}{Integer block size used when building zone artifacts.}
-
-\item{project_predictor_if_needed}{Logical; if TRUE, project predictor to match Zidx CRS.}
 }
 \value{
-A \code{data.table} with one row per GRIDCODE.
+A \code{data.frame} with one row per GRIDCODE.
 }
 \description{
-Loads cached zone artifacts from \code{zone_dir} for \code{region_id} and \code{blocksize},
-aligns the predictor (optionally projecting), and runs fast zonal summaries.
+Runs fast zonal summaries for one optimized zone set (\code{sr_zones}) and one predictor raster.
+This is the packaged analogue of the validated 05 workflow, using cached zone artifacts
+produced by \code{\link[=sr_optimize_zones]{sr_optimize_zones()}} and the true-blocking zonal engine modeled after 04c.
 }

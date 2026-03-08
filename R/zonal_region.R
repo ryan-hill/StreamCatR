@@ -1,19 +1,19 @@
 #' Run zonal statistics for a single region
 #'
-#' Loads cached zone artifacts from `zone_dir` for `region_id` and `blocksize`,
-#' aligns the predictor (optionally projecting), and runs fast zonal summaries.
+#' Runs fast zonal summaries for one optimized zone set (`sr_zones`) and one predictor raster.
+#' This is the packaged analogue of the validated 05 workflow, using cached zone artifacts
+#' produced by [sr_optimize_zones()] and the true-blocking zonal engine modeled after 04c.
 #'
-#' @param region_id Character region identifier used in filenames.
-#' @param zone_dir Directory containing zone artifacts produced by [sr_optimize_zones()].
 #' @param predictor_path Path to predictor raster.
-#' @param blocksize Integer block size used when building zone artifacts.
+#' @param zones An `sr_zones` object produced by [sr_optimize_zones()] or constructed with [sr_zones()].
 #' @param method Resampling method. Currently only `"near"` is supported.
 #'   Zonal alignment uses nearest-cell center matching (no interpolation).
 #'   If projection is required, this method is also used in `terra::project()`.
 #' @param stats Character vector of statistics. Supported: `"sum"`, `"mean"`, `"count"` (alias: `"n"`).
+#' @param pad_cells Integer predictor-cell padding around each zone window. Default `1L`, matching 04c.
+#' @param exact_crop Logical; if `TRUE`, use `terra::crop()` for predictor windows, matching 04c most closely.
 #' @param progress_every Print progress every N windows (0 disables).
-#' @param project_predictor_if_needed Logical; if TRUE, project predictor to match Zidx CRS.
-#' @return A `data.table` with one row per GRIDCODE.
+#' @return A `data.frame` with one row per GRIDCODE.
 #' @export
 sr_zonal_region <- function(
     predictor_path,
@@ -64,7 +64,7 @@ sr_zonal_region <- function(
   # attach GRIDCODE labeling (05 style output)
   out <- data.frame(GRIDCODE = ids, stringsAsFactors = FALSE)
   if (!is.null(res$sum))  out$sum <- res$sum
-  if (!is.null(res$n))    out$n <- res$n
+  if (!is.null(res$n)) out$count <- res$n
   if (!is.null(res$mean)) out$mean <- res$mean
 
   out

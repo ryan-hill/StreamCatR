@@ -12,7 +12,8 @@
 #'
 #' @param plan_strategy Future strategy name (e.g., `"sequential"`, `"multisession"`).
 #' @param reserve_cores Integer number of CPU cores to leave unused.
-#' @param prefer_threads_per_worker Logical or integer tuning value passed to [.sr_auto_parallel_layout()].
+#' @param prefer_threads_per_worker Logical or integer tuning value used by the internal
+#'   parallel-layout heuristic.
 #' @param max_workers Maximum number of parallel workers to use.
 #' @param memfrac_total Fraction of total RAM to budget for workers (0-1).
 #' @param approx_mem_per_worker_gb Approximate memory (GB) needed per worker (used for worker count heuristics).
