@@ -9,6 +9,8 @@ sr_zonal(
   zones,
   method = "near",
   stats = c("sum", "mean", "count"),
+  pad_cells = 1L,
+  exact_crop = TRUE,
   progress_every = 0L
 )
 }

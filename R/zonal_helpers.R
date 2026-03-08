@@ -139,7 +139,7 @@
     ex <- getNamespaceExports("ps")
     mem_fun <- NULL
     if ("ps_system_memory" %in% ex) {
-      mem_fun <- ps::ps_system_memory
+      mem_fun <- getExportedValue("ps", "ps_system_memory")
     } else if ("virtual_memory" %in% ex) {
       mem_fun <- getExportedValue("ps", "virtual_memory")
     }
@@ -183,15 +183,6 @@
   invisible(TRUE)
 }
 
-# CRS equality with fallback for older terra versions
-.sr_same_crs <- function(x, crs) {
-  if (exists("same.crs", where = asNamespace("terra"), inherits = FALSE)) {
-    return(terra::same.crs(x, crs))
-  }
-  # fallback (imperfect but works for many older installs)
-  identical(terra::crs(x), crs)
-}
-
 
 #' @keywords internal
 #' @noRd
@@ -205,31 +196,24 @@
 #' @keywords internal
 #' @noRd
 .sr_init_accumulator <- function(prefer_map = TRUE) {
-  # Prefer compiled symbols exported by StreamCatR (accum.cpp in src/)
   ns <- asNamespace("StreamCatR")
 
   has_idx <- exists("acc_sum_n_idx1K", envir = ns, mode = "function")
   has_map <- exists("acc_sum_n_map_centers1K", envir = ns, mode = "function")
 
-  if (has_idx) {
-    return(invisible(list(
-      acc_idx = get("acc_sum_n_idx1K", envir = ns, mode = "function"),
-      acc_map = if (isTRUE(prefer_map) && has_map) get("acc_sum_n_map_centers1K", envir = ns, mode = "function") else NULL
-    )))
+  if (!has_idx) {
+    stop(
+      "Internal accumulator not available. Expected compiled acc_sum_n_idx1K in StreamCatR.",
+      call. = FALSE
+    )
   }
 
-  # Optional: support a standalone helper package if you used that in dev
-  if (requireNamespace("scaccum", quietly = TRUE)) {
-    acc_idx <- scaccum::acc_sum_n_idx1K
-    acc_map <- NULL
-    if (isTRUE(prefer_map) && ("acc_sum_n_map_centers1K" %in% getNamespaceExports("scaccum"))) {
-      acc_map <- scaccum::acc_sum_n_map_centers1K
+  invisible(list(
+    acc_idx = get("acc_sum_n_idx1K", envir = ns, mode = "function"),
+    acc_map = if (isTRUE(prefer_map) && has_map) {
+      get("acc_sum_n_map_centers1K", envir = ns, mode = "function")
+    } else {
+      NULL
     }
-    return(invisible(list(acc_idx = acc_idx, acc_map = acc_map)))
-  }
-
-  stop(
-    "Accumulator not available. Expected acc_sum_n_idx1K (and optionally acc_sum_n_map_centers1K) from StreamCatR/src/accum.cpp.",
-    call. = FALSE
-  )
+  ))
 }

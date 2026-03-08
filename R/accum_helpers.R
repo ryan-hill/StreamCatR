@@ -374,7 +374,26 @@ NULL
 ) {
   profile <- match.arg(profile)
 
-  avail_gb <- tryCatch(ps::ps_virtual_memory()$available / 2^30, error = function(e) NA_real_)
+  avail_gb <- tryCatch({
+    ex <- getNamespaceExports("ps")
+    mem_fun <- NULL
+
+    if ("ps_system_memory" %in% ex) {
+      mem_fun <- getExportedValue("ps", "ps_system_memory")
+    } else if ("virtual_memory" %in% ex) {
+      mem_fun <- getExportedValue("ps", "virtual_memory")
+    }
+
+    if (is.null(mem_fun)) {
+      NA_real_
+    } else {
+      vm <- mem_fun()
+      bytes <- vm$available
+      if (is.null(bytes)) bytes <- vm$free
+      if (is.numeric(bytes) && is.finite(bytes)) bytes / 2^30 else NA_real_
+    }
+  }, error = function(e) NA_real_)
+
   cores    <- tryCatch(future::availableCores(), error = function(e) NA_integer_)
 
   if (!is.null(ram_override_gb)) avail_gb <- ram_override_gb

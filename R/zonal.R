@@ -9,16 +9,13 @@
 #' prepared by [sr_optimize_zones()].
 #'
 #' @param predictor A `terra::SpatRaster` or a path to a raster readable by terra.
-#' @param zones Either:
-#'   (1) an `sr_zones` object returned by [sr_optimize_zones()], or
-#'   (2) a list returned by [sr_optimize_zones()] (expects `zidx_path`, `grid_index_path`, and `wins_path`), or
-#'   (3) a list with `indexed_zones_path` (alias of `zidx_path`), `grid_index_path`, and `wins_path`, and optionally `ids`.
-#' @param stats Character vector of statistics to compute. Currently supported: `"sum"`, `"mean"`, `"count"` (alias: `"n"`).
+#' @param zones An `sr_zones` object returned by [sr_optimize_zones()].
 #' @param method Resampling method. Currently only `"near"` is supported.
-#'   Zonal alignment uses nearest-cell center matching (no interpolation).
-#'   If projection is required, this method is also used in `terra::project()`.
+#' @param stats Character vector of statistics to compute. Supported: `"sum"`, `"mean"`, `"count"` (alias: `"n"`).
+#' @param pad_cells Integer predictor-cell padding around each zone window. Default `1L`, matching 04c behavior.
+#' @param exact_crop Logical; if `TRUE`, use `terra::crop()` for predictor window extraction, matching 04c most closely.
 #' @param progress_every Print progress every N windows (0 disables).
-#' @return A `data.table` with one row per zone and columns for requested statistics.
+#' @return A `data.frame` with one row per zone and requested statistics.
 #' @export
 sr_zonal <- function(
     predictor,
@@ -40,26 +37,29 @@ sr_zonal <- function(
     stop("`zones` must be an sr_zones object returned by sr_optimize_zones().", call. = FALSE)
   }
 
-  # Ensure windows exist; build + cache if missing
   zones <- .sr_ensure_windows(zones)
 
   indexed_zones <- terra::rast(zones$zidx_path)
-  wins_path <- zones$wins_path
-  grid_index_path <- zones$grid_index_path
+  wins <- arrow::read_parquet(zones$wins_path, as_data_frame = TRUE)
 
-  # ids: read parquet, order by idx, coerce away from integer64
-  ids_tbl <- arrow::read_parquet(grid_index_path, as_data_frame = TRUE)
+  ids_tbl <- arrow::read_parquet(zones$grid_index_path, as_data_frame = TRUE)
   if (!"GRIDCODE" %in% names(ids_tbl)) {
-    stop("Index parquet lacks GRIDCODE column: ", grid_index_path, call. = FALSE)
+    stop("Index parquet lacks GRIDCODE column: ", zones$grid_index_path, call. = FALSE)
   }
-  if ("idx" %in% names(ids_tbl)) ids_tbl <- ids_tbl[order(ids_tbl$idx), , drop = FALSE]
+  if ("idx" %in% names(ids_tbl)) {
+    ids_tbl <- ids_tbl[order(ids_tbl$idx), , drop = FALSE]
+  }
 
   ids_raw <- ids_tbl$GRIDCODE
-  ids <- if (max(ids_raw, na.rm = TRUE) <= .Machine$integer.max) as.integer(ids_raw) else as.numeric(ids_raw)
+  ids <- if (max(ids_raw, na.rm = TRUE) <= .Machine$integer.max) {
+    as.integer(ids_raw)
+  } else {
+    as.numeric(ids_raw)
+  }
 
   res <- .sr_zonal_engine(
-    predictor = P,
-    indexed_zones = Zidx,
+    predictor = predictor,
+    indexed_zones = indexed_zones,
     ids = ids,
     windows = wins,
     method = method,
@@ -68,6 +68,13 @@ sr_zonal <- function(
     exact_crop = exact_crop,
     progress_every = progress_every
   )
+
+  out <- data.frame(GRIDCODE = ids, stringsAsFactors = FALSE)
+  if (!is.null(res$sum))  out$sum <- res$sum
+  if (!is.null(res$n))    out$count <- res$n
+  if (!is.null(res$mean)) out$mean <- res$mean
+
+  out
 }
 
 #' @keywords internal

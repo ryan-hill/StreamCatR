@@ -21,7 +21,7 @@ sr_zonal_region <- function(
     method = "near",
     stats = c("sum", "mean", "n"),
     pad_cells = 1L,
-    exact_crop = FALSE,
+    exact_crop = TRUE,
     progress_every = 0L
 ) {
   stopifnot(file.exists(predictor_path))

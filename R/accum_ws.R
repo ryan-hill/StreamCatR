@@ -65,14 +65,15 @@ sr_accumulate_ws <- function(
     z[[net_id_col]] <- z[[translation_to]]
 
     # Aggregate if multiple zonal IDs map to same net ID
-    z <- z |>
-      dplyr::filter(!is.na(.data[[net_id_col]])) |>
-      dplyr::group_by(.data[[net_id_col]]) |>
-      dplyr::summarise(
-        !!sum_col   := sum(.data[[sum_col]], na.rm = TRUE),
-        !!count_col := sum(.data[[count_col]], na.rm = TRUE),
-        .groups = "drop"
-      )
+    z <- dplyr::summarise(
+      dplyr::group_by(
+        dplyr::filter(z, !is.na(.data[[net_id_col]])),
+        .data[[net_id_col]]
+      ),
+      !!sum_col   := sum(.data[[sum_col]], na.rm = TRUE),
+      !!count_col := sum(.data[[count_col]], na.rm = TRUE),
+      .groups = "drop"
+    )
   } else {
     if (!net_id_col %in% names(z)) {
       # If no translation, assume zonal_id_col is the network id

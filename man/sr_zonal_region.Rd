@@ -5,24 +5,17 @@
 \title{Run zonal statistics for a single region}
 \usage{
 sr_zonal_region(
-  region_id,
-  zone_dir,
   predictor_path,
-  blocksize,
+  zones,
   method = "near",
-  stats = c("sum", "mean", "count"),
-  progress_every = 0L,
-  project_predictor_if_needed = FALSE
+  stats = c("sum", "mean", "n"),
+  pad_cells = 1L,
+  exact_crop = FALSE,
+  progress_every = 0L
 )
 }
 \arguments{
-\item{region_id}{Character region identifier used in filenames.}
-
-\item{zone_dir}{Directory containing zone artifacts produced by \code{\link[=sr_optimize_zones]{sr_optimize_zones()}}.}
-
 \item{predictor_path}{Path to predictor raster.}
-
-\item{blocksize}{Integer block size used when building zone artifacts.}
 
 \item{method}{Resampling method. Currently only \code{"near"} is supported.
 Zonal alignment uses nearest-cell center matching (no interpolation).
@@ -31,6 +24,12 @@ If projection is required, this method is also used in \code{terra::project()}.}
 \item{stats}{Character vector of statistics. Supported: \code{"sum"}, \code{"mean"}, \code{"count"} (alias: \code{"n"}).}
 
 \item{progress_every}{Print progress every N windows (0 disables).}
+
+\item{region_id}{Character region identifier used in filenames.}
+
+\item{zone_dir}{Directory containing zone artifacts produced by \code{\link[=sr_optimize_zones]{sr_optimize_zones()}}.}
+
+\item{blocksize}{Integer block size used when building zone artifacts.}
 
 \item{project_predictor_if_needed}{Logical; if TRUE, project predictor to match Zidx CRS.}
 }
