@@ -8,9 +8,9 @@ sr_zonal_region(
   predictor_path,
   zones,
   method = "near",
-  stats = c("sum", "mean", "n"),
+  stats = c("sum", "mean", "count"),
   pad_cells = 1L,
-  exact_crop = FALSE,
+  exact_crop = TRUE,
   progress_every = 0L
 )
 }

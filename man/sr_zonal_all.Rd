@@ -34,13 +34,13 @@ sr_zonal_all(
 
 \item{method}{Resampling method (default \code{"near"}). Used only if projecting predictor.}
 
-\item{stats}{Character vector of statistics. Supported: \code{"sum"}, \code{"mean"}, \code{"n"}.}
+\item{stats}{Character vector of statistics. Supported: \code{"sum"}, \code{"mean"}, \code{"count"} (alias: \code{"n"}).}
 
 \item{plan_strategy}{Future strategy name (e.g., \code{"sequential"}, \code{"multisession"}).}
 
 \item{reserve_cores}{Integer number of CPU cores to leave unused.}
 
-\item{prefer_threads_per_worker}{Logical; if TRUE, prefer fewer workers with more threads each.}
+\item{prefer_threads_per_worker}{Logical or integer tuning value passed to \code{\link[=.sr_auto_parallel_layout]{.sr_auto_parallel_layout()}}.}
 
 \item{max_workers}{Maximum number of parallel workers to use.}
 
@@ -52,12 +52,13 @@ sr_zonal_all(
 
 \item{r_libs_user}{Optional library path to set \code{R_LIBS_USER} for workers.}
 
-\item{combine}{Logical; if TRUE, row-bind all regional results into one table.}
+\item{combine}{Logical; if \code{TRUE}, row-bind all regional results into one table.}
 
-\item{verbose}{Logical; if TRUE, print progress and configuration details.}
+\item{verbose}{Logical; if \code{TRUE}, print progress and configuration details.}
 }
 \value{
-If \code{combine=TRUE}, a single \code{data.table}. Otherwise a named list of \code{data.table}s by region.
+If \code{combine=TRUE}, a single \code{data.table} when \code{data.table} is available, otherwise a \code{data.frame}.
+If \code{combine=FALSE}, a named list of per-region results.
 }
 \description{
 Applies \code{\link[=sr_zonal_region]{sr_zonal_region()}} across multiple regions and (optionally) combines results.

@@ -19,7 +19,7 @@ sr_zonal_region <- function(
     predictor_path,
     zones,                 # sr_zones object
     method = "near",
-    stats = c("sum", "mean", "n"),
+    stats = c("sum", "mean", "count"),
     pad_cells = 1L,
     exact_crop = TRUE,
     progress_every = 0L

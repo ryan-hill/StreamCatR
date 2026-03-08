@@ -17,21 +17,20 @@ sr_zonal(
 \arguments{
 \item{predictor}{A \code{terra::SpatRaster} or a path to a raster readable by terra.}
 
-\item{zones}{Either:
-(1) an \code{sr_zones} object returned by \code{\link[=sr_optimize_zones]{sr_optimize_zones()}}, or
-(2) a list returned by \code{\link[=sr_optimize_zones]{sr_optimize_zones()}} (expects \code{zidx_path}, \code{grid_index_path}, and \code{wins_path}), or
-(3) a list with \code{indexed_zones_path} (alias of \code{zidx_path}), \code{grid_index_path}, and \code{wins_path}, and optionally \code{ids}.}
+\item{zones}{An \code{sr_zones} object returned by \code{\link[=sr_optimize_zones]{sr_optimize_zones()}}.}
 
-\item{method}{Resampling method. Currently only \code{"near"} is supported.
-Zonal alignment uses nearest-cell center matching (no interpolation).
-If projection is required, this method is also used in \code{terra::project()}.}
+\item{method}{Resampling method. Currently only \code{"near"} is supported.}
 
-\item{stats}{Character vector of statistics to compute. Currently supported: \code{"sum"}, \code{"mean"}, \code{"count"} (alias: \code{"n"}).}
+\item{stats}{Character vector of statistics to compute. Supported: \code{"sum"}, \code{"mean"}, \code{"count"} (alias: \code{"n"}).}
+
+\item{pad_cells}{Integer predictor-cell padding around each zone window. Default \code{1L}, matching 04c behavior.}
+
+\item{exact_crop}{Logical; if \code{TRUE}, use \code{terra::crop()} for predictor window extraction, matching 04c most closely.}
 
 \item{progress_every}{Print progress every N windows (0 disables).}
 }
 \value{
-A \code{data.table} with one row per zone and columns for requested statistics.
+A \code{data.frame} with one row per zone and requested statistics.
 }
 \description{
 Computes summary statistics of a (continuous) predictor raster within catchment zones
