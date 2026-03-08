@@ -5,7 +5,7 @@
 #' produced by [sr_optimize_zones()] and the true-blocking zonal engine modeled after 04c.
 #'
 #' @param predictor_path Path to predictor raster.
-#' @param zones An `sr_zones` object produced by [sr_optimize_zones()] or constructed with [sr_zones()].
+#' @param zones A zone-artifact object of class `"sr_zones"` produced by [sr_optimize_zones()].
 #' @param method Resampling method. Currently only `"near"` is supported.
 #'   Zonal alignment uses nearest-cell center matching (no interpolation).
 #'   If projection is required, this method is also used in `terra::project()`.

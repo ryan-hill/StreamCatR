@@ -17,7 +17,7 @@ sr_zonal_region(
 \arguments{
 \item{predictor_path}{Path to predictor raster.}
 
-\item{zones}{An \code{sr_zones} object produced by \code{\link[=sr_optimize_zones]{sr_optimize_zones()}} or constructed with \code{\link[=sr_zones]{sr_zones()}}.}
+\item{zones}{A zone-artifact object of class \code{"sr_zones"} produced by \code{\link[=sr_optimize_zones]{sr_optimize_zones()}}.}
 
 \item{method}{Resampling method. Currently only \code{"near"} is supported.
 Zonal alignment uses nearest-cell center matching (no interpolation).
