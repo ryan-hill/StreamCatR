@@ -143,7 +143,38 @@ sr_optimize_zones <- function(
   tick(sprintf("built/loaded index (%d codes)", nrow(ids_tbl)))
 
   # Handle empty mapping (all-NA raster)
-  if (nrow(ids_tbl) == 0L) { ... }  # unchanged
+  # Handle empty mapping (all-NA raster)
+  if (nrow(ids_tbl) == 0L) {
+    if (!file.exists(zidx_path) || isTRUE(overwrite_rasters)) {
+      if (file.exists(zidx_path)) .sr_safe_unlink(zidx_path, TRUE)
+      terra::writeRaster(
+        work_trim * NA, zidx_path, overwrite = TRUE, datatype = "INT4S",
+        gdal = c(
+          "TILED=YES", "COMPRESS=ZSTD", "ZSTD_LEVEL=9",
+          "BIGTIFF=YES", "NUM_THREADS=ALL_CPUS",
+          sprintf("BLOCKXSIZE=%d", blocksize),
+          sprintf("BLOCKYSIZE=%d", blocksize)
+        )
+      )
+    }
+
+    if (isTRUE(build_windows) && (!file.exists(wins_path) || isTRUE(overwrite_rasters))) {
+      if (file.exists(wins_path)) .sr_safe_unlink(wins_path, TRUE)
+      arrow::write_parquet(
+        data.frame(row = integer(), col = integer(), nrows = integer(), ncols = integer()),
+        wins_path, compression = "zstd"
+      )
+    }
+
+    return(invisible(sr_zones(
+      region_id       = region_id,
+      blocksize       = blocksize,
+      zone_dir        = outdir,
+      grid_index_path = grid_index_path,
+      zidx_path       = zidx_path,
+      wins_path       = if (isTRUE(build_windows)) wins_path else NULL
+    )))
+  }
 
   # ---- 4) Build Zidx by app + match (compute first, then write once) ----
   if (!all(c("GRIDCODE", "idx") %in% names(ids_tbl))) {
