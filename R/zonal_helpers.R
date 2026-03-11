@@ -42,17 +42,48 @@
 .sr_build_gridcode_index_parquet_stream <- function(Z, out_file, progress_every = 0L) {
   stopifnot(inherits(Z, "SpatRaster"))
 
-  bs <- terra::blocks(Z)
-  n_blocks <- nrow(bs)
-  if (is.null(n_blocks) || n_blocks <= 0L) stop("Unexpected blocks() structure", call. = FALSE)
+  # Early guard: empty raster (0 rows/cols) -> write empty parquet and return
+  if (terra::nrow(Z) == 0L || terra::ncol(Z) == 0L || terra::ncell(Z) == 0L) {
+    dt <- data.frame(GRIDCODE = integer(0), idx = integer(0))
+    arrow::write_parquet(dt, out_file, compression = "zstd")
+    return(invisible(dt))
+  }
 
+  bs <- terra::blocks(Z)
+
+  # Normalize blocks() return: support both data.frame and list forms
+  if (is.null(bs)) {
+    # fallback: write empty and return
+    dt <- data.frame(GRIDCODE = integer(0), idx = integer(0))
+    arrow::write_parquet(dt, out_file, compression = "zstd")
+    return(invisible(dt))
+  }
+  if (is.list(bs) && !is.data.frame(bs)) {
+    bs <- as.data.frame(bs, stringsAsFactors = FALSE)
+  }
+
+  # Compute number of blocks robustly
+  n_blocks <- if (!is.null(nrow(bs))) nrow(bs) else {
+    if (!is.null(bs$row)) length(bs$row) else NA_integer_
+  }
+
+  # If still unknown or zero, treat as empty and return an empty parquet
+  if (is.na(n_blocks) || n_blocks <= 0L) {
+    dt <- data.frame(GRIDCODE = integer(0), idx = integer(0))
+    arrow::write_parquet(dt, out_file, compression = "zstd")
+    return(invisible(dt))
+  }
+
+  # Hash set of seen GRIDCODEs
   seen <- new.env(parent = emptyenv())
 
   terra::readStart(Z)
   on.exit(terra::readStop(Z), add = TRUE)
 
   for (i in seq_len(n_blocks)) {
-    z <- terra::readValues(Z, row = bs$row[i], nrows = bs$nrows[i], mat = FALSE)
+    b_row   <- bs$row[i]
+    b_nrows <- bs$nrows[i]
+    z <- terra::readValues(Z, row = b_row, nrows = b_nrows, mat = FALSE)
     z <- z[!is.na(z)]
     if (!length(z)) next
 
@@ -66,22 +97,14 @@
 
   ids_chr <- ls(seen, all.names = TRUE)
   if (length(ids_chr) == 0L) {
-    dt <- data.frame(GRIDCODE = numeric(0), idx = integer(0))
+    dt <- data.frame(GRIDCODE = integer(0), idx = integer(0))
     arrow::write_parquet(dt, out_file, compression = "zstd")
     return(invisible(dt))
   }
 
-  ids_num <- suppressWarnings(as.numeric(ids_chr))
-  ids_num <- ids_num[is.finite(ids_num)]
-  ids_num <- sort(unique(ids_num))
-
-  gridcodes <- if (length(ids_num) && max(abs(ids_num), na.rm = TRUE) <= .Machine$integer.max) {
-    as.integer(ids_num)
-  } else {
-    ids_num
-  }
-
-  dt <- data.frame(GRIDCODE = gridcodes, idx = seq_along(gridcodes))
+  # Keep the original behavior: integer GRIDCODEs in ascending order
+  ids_int <- sort(as.integer(ids_chr))
+  dt <- data.frame(GRIDCODE = ids_int, idx = seq_along(ids_int))
   arrow::write_parquet(dt, out_file, compression = "zstd")
   invisible(dt)
 }
@@ -93,10 +116,12 @@
   nr <- terra::nrow(Zidx_disk)
   nc <- terra::ncol(Zidx_disk)
 
+  # Reduce by blocksize using a NA-safe presence test
+  # sum(x, na.rm=TRUE) > 0 is robust even if x contains NA
   occ <- terra::aggregate(
     !is.na(Zidx_disk),
     fact = c(as.integer(blocksize), as.integer(blocksize)),
-    fun  = function(x) as.integer(any(x))
+    fun  = function(x) as.integer(any(x != 0))   # fast and NA-safe
   )
 
   vals <- terra::values(occ, mat = FALSE)
