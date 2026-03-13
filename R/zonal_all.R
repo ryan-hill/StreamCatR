@@ -6,7 +6,6 @@
 #' @param regions Character vector of region identifiers.
 #' @param zone_dir Directory containing zone artifacts produced by [sr_optimize_zones()].
 #' @param predictor_path Path to the predictor raster.
-#' @param blocksize Integer block size used when building the zone artifacts.
 #' @param method Resampling method (default `"near"`). Used only if projecting predictor.
 #' @param stats Character vector of statistics. Supported: `"sum"`, `"mean"`, `"count"` (alias: `"n"`).
 #'
@@ -29,7 +28,7 @@
 sr_zonal_all <- function(regions,
                          zone_dir,
                          predictor_path,
-                         blocksize = 6144L,
+                         #blocksize = 6144L,
                          method = "near",
                          stats = "sum",
                          plan_strategy = c("multisession", "multicore", "cluster"),
@@ -44,7 +43,7 @@ sr_zonal_all <- function(regions,
                          verbose = TRUE) {
   stopifnot(length(regions) > 0)
   plan_strategy <- match.arg(plan_strategy)
-  blocksize <- as.integer(blocksize)
+  #blocksize <- as.integer(blocksize)
 
   if (!requireNamespace("future", quietly = TRUE) ||
       !requireNamespace("future.apply", quietly = TRUE)) {
@@ -84,7 +83,7 @@ sr_zonal_all <- function(regions,
   dir.create(out_terra_temp_base, recursive = TRUE, showWarnings = FALSE)
 
   win_path <- function(rid) {
-    file.path(zone_dir, sprintf("%s_nonempty_windows_%d.parquet", rid, blocksize))
+    file.path(zone_dir, sprintf("%s_nonempty_windows.parquet", rid))
   }
 
   has_win <- vapply(regions, function(r) file.exists(win_path(r)), logical(1))
@@ -124,11 +123,11 @@ sr_zonal_all <- function(regions,
 
       zones_obj <- sr_zones(
         region_id = rid,
-        blocksize = blocksize,
+        #blocksize = blocksize,  # still fine to keep as metadata
         zone_dir = zone_dir,
-        grid_index_path = file.path(zone_dir, sprintf("%s_gridcode_index.parquet", rid)),
-        zidx_path = file.path(zone_dir, sprintf("%s_zone_index_block%d.tif", rid, blocksize)),
-        wins_path = file.path(zone_dir, sprintf("%s_nonempty_windows_%d.parquet", rid, blocksize))
+        grid_index_path = file.path(zone_dir, sprintf("%s_rasterid_index.parquet", rid)),
+        zidx_path       = file.path(zone_dir, sprintf("%s_zone_index.tif", rid)),
+        wins_path       = file.path(zone_dir, sprintf("%s_nonempty_windows.parquet", rid))
       )
 
       out <- sr_zonal_region(

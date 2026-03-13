@@ -85,7 +85,7 @@ sr_zonal <- function(
     ids,
     windows,
     method = c("near"),
-    stats = c("sum", "mean", "n"),
+    stats = c("sum", "mean", "n", "count"),
     pad_cells = 1L,
     exact_crop = TRUE,
     progress_every = 0L
@@ -129,13 +129,24 @@ sr_zonal <- function(
   rxP <- resP[1]
   ryP <- resP[2]
 
-  # ReadStart for speed
+  # # ReadStart for speed
+  # terra::readStart(Zidx)
+  # terra::readStart(predictor)
+  # on.exit({
+  #   terra::readStop(Zidx)
+  #   terra::readStop(predictor)
+  # }, add = TRUE)
+
+  # ReadStart for speed: always for Zidx; for predictor only if we use readValues
   terra::readStart(Zidx)
-  terra::readStart(predictor)
-  on.exit({
-    terra::readStop(Zidx)
-    terra::readStop(predictor)
-  }, add = TRUE)
+  on.exit(try(terra::readStop(Zidx), silent = TRUE), add = TRUE)
+
+  p_started <- FALSE
+  if (!isTRUE(exact_crop)) {
+    terra::readStart(predictor)
+    p_started <- TRUE
+    on.exit(try(terra::readStop(predictor), silent = TRUE), add = TRUE)
+  }
 
   # Iterate windows (must include row/col/nrows/ncols or r0/c0/nr/nc depending on your windows parquet)
   # Here I assume windows has columns: row, col, nrows, ncols (1-based), matching 04c/05 scripts.

@@ -8,7 +8,6 @@ sr_zonal_all(
   regions,
   zone_dir,
   predictor_path,
-  blocksize = 6144L,
   method = "near",
   stats = "sum",
   plan_strategy = c("multisession", "multicore", "cluster"),
@@ -29,8 +28,6 @@ sr_zonal_all(
 \item{zone_dir}{Directory containing zone artifacts produced by \code{\link[=sr_optimize_zones]{sr_optimize_zones()}}.}
 
 \item{predictor_path}{Path to the predictor raster.}
-
-\item{blocksize}{Integer block size used when building the zone artifacts.}
 
 \item{method}{Resampling method (default \code{"near"}). Used only if projecting predictor.}
 

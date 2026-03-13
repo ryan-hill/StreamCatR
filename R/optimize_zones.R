@@ -45,9 +45,9 @@ sr_optimize_zones <- function(
   tick("start")
   # Timing ------------------------------------------------------------------
 
-  grid_index_path <- file.path(outdir, sprintf("%s_gridcode_index.parquet", region_id))
-  zidx_path       <- file.path(outdir, sprintf("%s_zone_index_block%d.tif", region_id, blocksize))
-  wins_path       <- file.path(outdir, sprintf("%s_nonempty_windows_%d.parquet", region_id, blocksize))
+  grid_index_path <- file.path(outdir, sprintf("%s_rasterid_index.parquet", region_id))
+  zidx_path       <- file.path(outdir, sprintf("%s_zone_index.tif", region_id, blocksize))
+  wins_path       <- file.path(outdir, sprintf("%s_nonempty_windows.parquet", region_id, blocksize))
 
   # ---- 1) Read source; project only if needed; ALWAYS write a tiled temp work raster ----
   src <- terra::rast(catchment_path)
