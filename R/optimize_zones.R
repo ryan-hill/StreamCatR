@@ -143,7 +143,6 @@ sr_optimize_zones <- function(
   tick(sprintf("built/loaded index (%d codes)", nrow(ids_tbl)))
 
   # Handle empty mapping (all-NA raster)
-  # Handle empty mapping (all-NA raster)
   if (nrow(ids_tbl) == 0L) {
     if (!file.exists(zidx_path) || isTRUE(overwrite_rasters)) {
       if (file.exists(zidx_path)) .sr_safe_unlink(zidx_path, TRUE)
