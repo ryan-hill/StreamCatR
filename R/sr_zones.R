@@ -1,24 +1,37 @@
-#' Construct sr_zones object
-#'
-#' @keywords internal
-#' @noRd
+#' Construct sr_zones object (auto-discovers files)
+#' @export
 sr_zones <- function(
-    grid_index_path,
-    zidx_path,
-    wins_path = NULL,
-    region_id = NULL,
-    blocksize = NULL,
-    zone_dir  = NULL
+    region_id,
+    zone_dir,
+    grid_index_path = NULL,
+    zidx_path       = NULL,
+    wins_path       = NULL,
+    blocksize       = NULL
 ) {
-  stopifnot(
-    is.character(grid_index_path), length(grid_index_path) == 1L,
-    is.character(zidx_path),       length(zidx_path) == 1L
-  )
+  stopifnot(is.character(region_id), length(region_id) == 1L, nzchar(region_id))
+  stopifnot(is.character(zone_dir),  length(zone_dir) == 1L,  nzchar(zone_dir))
 
-  if (!is.null(wins_path)) stopifnot(is.character(wins_path), length(wins_path) == 1L)
-  if (!is.null(region_id)) stopifnot(is.character(region_id), length(region_id) == 1L)
-  if (!is.null(blocksize)) blocksize <- as.integer(blocksize)
-  if (!is.null(zone_dir))  stopifnot(is.character(zone_dir), length(zone_dir) == 1L)
+  guessed <- .sr_guess_zone_paths(region_id, zone_dir)
+
+  grid_index_path <- grid_index_path %||% guessed$grid_index_path
+  zidx_path       <- zidx_path       %||% guessed$zidx_path
+  wins_path       <- wins_path       %||% guessed$wins_path
+  blocksize       <- blocksize       %||% guessed$blocksize
+
+  if (is.null(grid_index_path) || !file.exists(grid_index_path)) {
+    stop("grid index not found for region '", region_id, "' in '", zone_dir, "'. ",
+         "Looked for: ", guessed$grid_index_path %||% "<none>", call. = FALSE)
+  }
+  if (is.null(zidx_path) || !file.exists(zidx_path)) {
+    stop("zone index (zidx) not found for region '", region_id, "' in '", zone_dir, "'. ",
+         "Looked for: ", guessed$zidx_path %||% "<none>", call. = FALSE)
+  }
+
+  # Infer blocksize from windows parquet when available
+  if ((is.null(blocksize) || is.na(blocksize) || blocksize <= 0L) &&
+      !is.null(wins_path) && file.exists(wins_path)) {
+    blocksize <- .sr_blocksize_from_windows(wins_path)
+  }
 
   structure(
     list(
@@ -31,16 +44,4 @@ sr_zones <- function(
     ),
     class = "sr_zones"
   )
-}
-
-#' @export
-print.sr_zones <- function(x, ...) {
-  cat("<sr_zones>\n")
-  if (!is.null(x$region_id)) cat("  Region:     ", x$region_id, "\n")
-  if (!is.null(x$blocksize)) cat("  Blocksize:  ", x$blocksize, "\n")
-  if (!is.null(x$zone_dir))  cat("  Zone dir:   ", x$zone_dir, "\n")
-  cat("  Zidx:       ", x$zidx_path, "\n")
-  cat("  Grid index: ", x$grid_index_path, "\n")
-  cat("  Windows:    ", if (is.null(x$wins_path)) "<not built>" else x$wins_path, "\n")
-  invisible(x)
 }
