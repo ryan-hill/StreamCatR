@@ -242,3 +242,115 @@
     }
   ))
 }
+
+#' @keywords internal
+#' @noRd
+.sr_parse_blocksize_from_filename <- function(path) {
+  # For legacy names like <rid>_zone_index_blockNNNN.tif ->  NNNN
+  m <- regexec("_block([0-9]+)\\.tif$", basename(path))
+  reg <- regmatches(basename(path), m)[[1]]
+  if (length(reg) >= 2) {
+    as.integer(reg[2])
+  } else {
+    NA_integer_
+  }
+}
+
+#' Prefer "new" naming, with clean fallback to "legacy"
+#' Returns list(paths...) and inferred blocksize if from legacy names.
+#' @keywords internal
+#' @noRd
+.sr_guess_zone_paths <- function(region_id, zone_dir) {
+  # "new" convention
+  new_zidx <- file.path(zone_dir, sprintf("%s_zone_index.tif", region_id))
+  new_idx  <- file.path(zone_dir, sprintf("%s_rasterid_index.parquet", region_id))
+  new_win  <- file.path(zone_dir, sprintf("%s_nonempty_windows.parquet", region_id))
+
+  # "legacy" convention (blocksize suffix)
+  # We don't know blocksize, so search for matching patterns and pick the most recent or any one
+  legacy_zidx <- Sys.glob(file.path(zone_dir, sprintf("%s_zone_index_block*.tif", region_id)))
+  legacy_idx  <- file.path(zone_dir, sprintf("%s_gridcode_index.parquet", region_id))
+  legacy_win  <- Sys.glob(file.path(zone_dir, sprintf("%s_nonempty_windows_*.parquet", region_id)))
+
+  if (file.exists(new_zidx) && file.exists(new_idx)) {
+    list(
+      zidx_path       = new_zidx,
+      grid_index_path = new_idx,
+      wins_path       = if (file.exists(new_win)) new_win else NULL,
+      blocksize       = NA_integer_,  # not encoded in new names
+      naming          = "new"
+    )
+  } else if (length(legacy_zidx) > 0L && file.exists(legacy_idx)) {
+    # choose the first .tif (or the one with largest blocksize); match wins by blocksize if possible
+    # pick the tif with the largest blocksize (usually the intentional one)
+    bs_all <- vapply(legacy_zidx, .sr_parse_blocksize_from_filename, integer(1))
+    pick <- if (any(!is.na(bs_all))) which.max(bs_all) else 1L
+    zidx <- legacy_zidx[pick]
+    bs   <- .sr_parse_blocksize_from_filename(zidx)
+
+    win <- NULL
+    if (length(legacy_win) > 0L) {
+      if (!is.na(bs)) {
+        # try to match wins file with same blocksize
+        pat <- sprintf("_nonempty_windows_%d\\.parquet$", bs)
+        sel <- grep(pat, legacy_win)
+        if (length(sel) >= 1L) win <- legacy_win[sel[1]]
+      }
+      # fallback: just take the first windows file
+      if (is.null(win)) win <- legacy_win[1]
+    }
+
+    list(
+      zidx_path       = zidx,
+      grid_index_path = legacy_idx,
+      wins_path       = if (!is.null(win) && file.exists(win)) win else NULL,
+      blocksize       = bs,
+      naming          = "legacy"
+    )
+  } else {
+    list(
+      zidx_path       = new_zidx,
+      grid_index_path = new_idx,
+      wins_path       = if (file.exists(new_win)) new_win else NULL,
+      blocksize       = NA_integer_,
+      naming          = "none"
+    )
+  }
+}
+
+
+#' Infer blocksize from a windows parquet by using the most frequent window size
+#' Interior tiles are full-size; edges are smaller.
+#' @keywords internal
+#' @noRd
+.sr_blocksize_from_windows <- function(wins_path) {
+  if (is.null(wins_path) || !file.exists(wins_path)) return(NA_integer_)
+  wins <- tryCatch(arrow::read_parquet(wins_path, as_data_frame = TRUE),
+                   error = function(e) NULL)
+  if (is.null(wins) || nrow(wins) == 0L) return(NA_integer_)
+
+  nr <- as.integer(wins$nrows)
+  nc <- as.integer(wins$ncols)
+  nr <- nr[is.finite(nr) & nr > 0L]
+  nc <- nc[is.finite(nc) & nc > 0L]
+  if (!length(nr) && !length(nc)) return(NA_integer_)
+
+  # Mode helper
+  mode_int <- function(x) {
+    tx <- table(x)
+    as.integer(names(tx)[which.max(tx)])
+  }
+
+  mr <- if (length(nr)) mode_int(nr) else NA_integer_
+  mc <- if (length(nc)) mode_int(nc) else NA_integer_
+
+  if (is.finite(mr) && is.finite(mc)) {
+    if (mr == mc) mr else max(mr, mc)
+  } else if (is.finite(mr)) {
+    mr
+  } else if (is.finite(mc)) {
+    mc
+  } else {
+    NA_integer_
+  }
+}
