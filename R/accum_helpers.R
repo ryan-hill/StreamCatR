@@ -72,22 +72,21 @@ NULL
     from_col,
     to_col,
     include_self = TRUE,
+    # NEW:
+    id_col_name,
+    up_col_name,
 
-    # If NULL, filled from .sr_choose_params(profile=...)
     vertex_batch_size = NULL,
     max_rows_per_part = NULL,
     compression_codec = NULL,
 
-    # Keep explicit defaults (not tuned)
     compression_level = 4L,
     use_dictionary = TRUE,
 
-    # Auto-tuning controls (02-style)
     profile = c("auto", "small", "large"),
     ram_override_gb = NULL,
     cores_override = NULL,
 
-    # Optional mini-batch mode (02-style)
     use_mini_batches = NULL,
     mini_batch_size = NULL
 ) {
@@ -99,55 +98,30 @@ NULL
   }
 
   profile <- match.arg(profile)
+  p <- .sr_choose_params(profile, ram_override_gb = ram_override_gb, cores_override = cores_override)
 
-  # ---- choose params (02 behavior) ----
-  p <- .sr_choose_params(
-    profile         = profile,
-    ram_override_gb = ram_override_gb,
-    cores_override  = cores_override
-  )
-
-  # Fill ONLY when user didn't explicitly set them
   if (is.null(vertex_batch_size)) vertex_batch_size <- p$vertex_batch_size
   if (is.null(max_rows_per_part)) max_rows_per_part <- p$max_rows_per_part
   if (is.null(compression_codec)) compression_codec <- p$compression_codec
-
   if (is.null(use_mini_batches)) use_mini_batches <- isTRUE(p$use_mini_batches)
   if (is.null(mini_batch_size))  mini_batch_size  <- p$mini_batch_size
-
-  if (isTRUE(use_mini_batches)) {
-    if (is.null(mini_batch_size) || !is.finite(mini_batch_size) || mini_batch_size <= 0) {
-      stop("`use_mini_batches=TRUE` requires a positive integer `mini_batch_size`.", call. = FALSE)
-    }
-    mini_batch_size <- as.integer(mini_batch_size)
-  }
 
   vertex_batch_size <- as.integer(vertex_batch_size)
   if (!is.finite(vertex_batch_size) || vertex_batch_size <= 0L) {
     stop("`vertex_batch_size` must be a positive integer.", call. = FALSE)
   }
-
-  # `max_rows_per_part` can be large; keep as numeric but validate
   if (!is.finite(max_rows_per_part) || max_rows_per_part <= 0) {
     stop("`max_rows_per_part` must be a positive number.", call. = FALSE)
   }
 
-  # ---- output dir ----
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
-  # ---- normalize/clean edges ----
   e <- edges[, c(from_col, to_col)]
   names(e) <- c("FROM", "TO")
-
-  # Match 02: drop NAs and 0 endpoints (common outlet encoding)
   e <- e[!is.na(e$FROM) & !is.na(e$TO), , drop = FALSE]
   e <- e[e$FROM != 0 & e$TO != 0, , drop = FALSE]
+  if (nrow(e) == 0L) stop("No edges remain after filtering NA/0 endpoints.", call. = FALSE)
 
-  if (nrow(e) == 0L) {
-    stop("No edges remain after filtering NA/0 endpoints. Check inputs.", call. = FALSE)
-  }
-
-  # igraph likes character vertex names
   e_from <- as.character(e$FROM)
   e_to   <- as.character(e$TO)
 
@@ -160,26 +134,20 @@ NULL
     vertices = vertices
   )
 
-  # Optional: store numeric COMIDs for compactness; validate conversion
   num_names <- suppressWarnings(as.integer(igraph::V(g)$name))
   if (anyNA(num_names)) {
-    stop(
-      "Failed converting vertex names to integer COMIDs. ",
-      "This indicates non-numeric IDs in the graph.",
-      call. = FALSE
-    )
+    stop("Failed converting vertex names to integers. Non-numeric IDs detected.", call. = FALSE)
   }
 
   mindist_val <- if (isTRUE(include_self)) 0L else 1L
   order_val   <- igraph::vcount(g)
   n           <- order_val
 
-  # ---- writer ----
   part_counter <- 0L
-
-  write_part <- function(COMIDs, UPCOMIDs) {
+  write_part <- function(focals, ups) {
     part_counter <<- part_counter + 1L
-    df <- data.frame(COMID = COMIDs, UPCOMIDS = UPCOMIDs)
+    df <- data.frame(focals, ups)
+    names(df) <- c(id_col_name, up_col_name)
     arrow::write_parquet(
       df,
       sink = file.path(out_dir, sprintf("part-%06d.parquet", part_counter)),
@@ -190,21 +158,13 @@ NULL
     invisible(NULL)
   }
 
-  # ---- helper: split an index vector into chunks ----
   .chunk_idxs <- function(x, chunk_size) {
     split(x, ceiling(seq_along(x) / chunk_size))
   }
 
-  # ---- main loop: vertex batches, optional mini-batches ----
   for (start in seq.int(1L, n, by = vertex_batch_size)) {
     idxs <- start:min(start + vertex_batch_size - 1L, n)
-
-    # Further split for low-RAM machines to reduce peak size of ego() result
-    idx_groups <- if (isTRUE(use_mini_batches)) {
-      .chunk_idxs(idxs, mini_batch_size)
-    } else {
-      list(idxs)
-    }
+    idx_groups <- if (isTRUE(use_mini_batches)) .chunk_idxs(idxs, mini_batch_size) else list(idxs)
 
     for (grp in idx_groups) {
       grp <- as.integer(grp)
@@ -219,35 +179,25 @@ NULL
 
       rows_per_vertex <- lengths(anc_batch)
 
-      # Partition this ego result into parquet parts by `max_rows_per_part`
-      i <- 1L
-      m <- length(grp)
-
+      i <- 1L; m <- length(grp)
       while (i <= m) {
-        # Single-vertex overflow guard: prevent infinite loop
         if (rows_per_vertex[i] > max_rows_per_part) {
-          # Write this vertex alone (still might be huge; but we at least make progress)
           vs <- anc_batch[[i]]
           sub_idx <- grp[i]
-
-          COMIDs   <- rep(num_names[sub_idx], length(vs))
-          UPCOMIDs <- num_names[as.integer(vs)]
-
-          write_part(COMIDs, UPCOMIDs)
-          rm(COMIDs, UPCOMIDs); gc(FALSE)
-
+          focals <- rep(num_names[sub_idx], length(vs))
+          ups    <- num_names[as.integer(vs)]
+          write_part(focals, ups)
+          rm(focals, ups); gc(FALSE)
           i <- i + 1L
           next
         }
 
         rows_acc  <- 0
         sub_start <- i
-
         while (i <= m && (rows_acc + rows_per_vertex[i]) <= max_rows_per_part) {
           rows_acc <- rows_acc + rows_per_vertex[i]
           i <- i + 1L
         }
-
         sub_end <- i - 1L
         if (sub_end < sub_start) next
 
@@ -255,16 +205,11 @@ NULL
         sub_idxs <- grp[sub_start:sub_end]
         sub_rows <- rows_per_vertex[sub_start:sub_end]
 
-        COMIDs <- rep(num_names[sub_idxs], sub_rows)
+        focals <- rep(num_names[sub_idxs], sub_rows)
+        ups <- unlist(lapply(sub_anc, function(vs) num_names[as.integer(vs)]), use.names = FALSE)
 
-        # UPCOMIDs: concatenate ancestors per vertex in the same order
-        UPCOMIDs <- unlist(
-          lapply(sub_anc, function(vs) num_names[as.integer(vs)]),
-          use.names = FALSE
-        )
-
-        write_part(COMIDs, UPCOMIDs)
-        rm(COMIDs, UPCOMIDs); gc(FALSE)
+        write_part(focals, ups)
+        rm(focals, ups); gc(FALSE)
       }
 
       rm(anc_batch, rows_per_vertex); gc(FALSE)

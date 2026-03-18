@@ -7,49 +7,58 @@
 sr_streamcat_framework(
   out_dir,
   preset = c("none", "mr_nhdplus"),
-  MRNHDPlus = NULL,
   data_dir = NULL,
   from_to = NULL,
   edge_filter = NULL,
   include_self = TRUE,
   overwrite = FALSE,
+  from_col = NULL,
+  to_col = NULL,
+  id_col = NULL,
+  up_col = NULL,
+  preset_paths = NULL,
+  nhdplus_mr = NULL,
   ...
 )
 }
 \arguments{
 \item{out_dir}{Output directory for the staged upstream-pairs dataset.}
 
-\item{preset}{Preset configuration. Use \code{"mr_nhdplus"} for MR NHDPlus conventions,
-or \code{"none"} for a generic from-to table.}
+\item{preset}{Preset configuration. Use \code{"mr_nhdplus"} for MR NHDPlus
+conventions, or \code{"none"} for a generic from-to table.}
 
-\item{MRNHDPlus}{Logical; if TRUE, equivalent to \code{preset="mr_nhdplus"}. If FALSE,
-equivalent to \code{preset="none"}. If NULL, uses \code{preset}.}
-
-\item{data_dir}{Directory containing preset parquet inputs (only for presets).
+\item{data_dir}{Directory containing preset parquet inputs (only for
+presets).
 If NULL and a preset is used, data will be fetched on-demand.}
 
-\item{from_to}{From-to topology table (data.frame/Arrow Table/Dataset) or a file path.
-Required if \code{preset="none"}. Ignored for \code{preset="mr_nhdplus"} unless explicitly provided.}
+\item{from_to}{From-to topology table (data.frame/Arrow Table/Dataset)
+or a file path. Required if \code{preset="none"}. Ignored for
+\code{preset="mr_nhdplus"} unless explicitly provided.}
 
-\item{edge_filter}{Optional function that takes a data.frame of edges and returns a filtered
-data.frame. Applied after preset default cleaning.}
+\item{edge_filter}{Optional function that takes a data.frame of edges and
+returns a filtered data.frame. Applied after preset default cleaning.}
 
-\item{include_self}{Logical; if TRUE, include each ID as upstream of itself (common for accumulation).}
+\item{include_self}{Logical; if TRUE, include each ID as upstream of itself
+(common for accumulation).}
 
 \item{overwrite}{Logical; if TRUE, overwrite existing \code{out_dir}.}
+
+\item{nhdplus_mr}{Logical; if TRUE, equivalent to \code{preset="mr_nhdplus"}.
+If FALSE, equivalent to \code{preset="none"}. If NULL, uses \code{preset}.}
 
 \item{...}{Additional arguments passed to internal builders.}
 }
 \value{
-An object of class \code{"sr_accum_framework"} containing \code{pairs_dir}, \code{preset},
-and schema metadata (including id columns used).
+An object of class \code{"sr_accum_framework"} containing \code{pairs_dir},
+\code{preset}, and schema metadata (including id columns used).
 }
 \description{
 Builds a staged upstream-pairs dataset (stored as Arrow parquet files) from a
-directed from-to topology table. Optionally uses a preset (e.g., MR NHDPlus CONUS)
-that provides standard column names, translation tables, and default edge cleaning.
+directed from-to topology table. Optionally uses a preset
+(e.g., MR NHDPlus CONUS) that provides standard column names,
+translation tables, and default edge cleaning.
 }
 \details{
-The resulting framework can be used with \code{\link[=sr_accumulate_ws]{sr_accumulate_ws()}} to accumulate zonal
-statistics upstream across the network.
+The resulting framework can be used with \code{\link[=sr_accumulate_ws]{sr_accumulate_ws()}} to accumulate
+zonal statistics upstream across the network.
 }
